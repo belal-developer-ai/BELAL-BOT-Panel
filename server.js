@@ -1924,8 +1924,19 @@ function showGlobalError(msg){
     diag.innerHTML="🔴 GLOBAL ERROR ("+new Date().toLocaleTimeString()+")<br>"+_escSafe(msg).replace(/\n/g,"<br>")+"<hr>"+diag.innerHTML;
   }catch(e){ /* ডায়াগনস্টিক নিজেই যেন কখনো ক্র্যাশ না করে */ }
 }
-window.addEventListener("error", function(e){ showGlobalError((e.message||"unknown")+" @ "+(e.filename||"")+":"+(e.lineno||"")); });
-window.addEventListener("unhandledrejection", function(e){ showGlobalError("Unhandled Promise: "+(e.reason&&e.reason.message?e.reason.message:String(e.reason))); });
+window.addEventListener("error", function(e){
+  // নেটওয়ার্ক/ফেচ/WS error → showGlobalError-এ পাঠাবো না, Render free spin-up এ এটা স্বাভাবিক
+  const msg=(e.message||"").toLowerCase();
+  if(msg.includes("network")||msg.includes("fetch")||msg.includes("failed to fetch")||msg.includes("websocket")||msg.includes("load")) return;
+  showGlobalError((e.message||"unknown")+" @ "+(e.filename||"")+":"+(e.lineno||""));
+});
+window.addEventListener("unhandledrejection", function(e){
+  const reason=e.reason&&(e.reason.message||String(e.reason))||"";
+  const r=reason.toLowerCase();
+  // fetch abort / network error / WS error → স্বাভাবিক, দেখানোর দরকার নেই
+  if(r.includes("abort")||r.includes("network")||r.includes("failed to fetch")||r.includes("websocket")) return;
+  showGlobalError("Unhandled Promise: "+reason);
+});
 
 let curDir="",curEdit="",renameFrom="",copyFrom="",logFilter="all",autoScroll=true;
 let ws,_botUpSec=0,_botRunning=false;
@@ -1946,9 +1957,12 @@ function goTab(id,btn){
 }
 
 // WS
+let _wsConnected=false;
 function connectWS(){
   const proto=location.protocol==="https:"?"wss":"ws";
+  const ts=document.getElementById("tStatus"); if(ts&&!_wsConnected) ts.textContent="🔄 সংযোগ হচ্ছে...";
   ws=new WebSocket(proto+"://"+location.host);
+  ws.onopen=()=>{ _wsConnected=true; refresh(); }; // WS connect হলেই একবার refresh করো
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.type==="log") appendLog(m.data);
@@ -1958,7 +1972,8 @@ function connectWS(){
     if(m.type==="alert"){ showAlertBanner(m.data); _alertsCache.unshift(m.data); _unreadAlerts++; updateBellBadge(); if(document.getElementById("alertDrawer").classList.contains("show")) renderAlertList(); }
     if(m.type==="mongo") updateMongo(m.connected);
   };
-  ws.onclose=()=>setTimeout(connectWS,3000);
+  ws.onerror=()=>{ _wsConnected=false; }; // error চুপচাপ handle করো, onclose-ই retry নেবে
+  ws.onclose=()=>{ _wsConnected=false; setTimeout(connectWS,3000); };
 }
 
 // ── ইন-প্যানেল অ্যালার্ট সিস্টেম ──
@@ -2098,7 +2113,7 @@ setInterval(()=>{if(!_botRunning)return;_botUpSec++;const el=document.getElement
 async function refresh(){
   try{
     const ac=new AbortController();
-    const toId=setTimeout(()=>ac.abort(),8000); // ৮ সেকেন্ডে সাড়া না পেলে থেমে যাওয়ার বদলে টাইমআউট ধরে নেওয়া হবে
+    const toId=setTimeout(()=>ac.abort(),30000); // Render free instance spin-up ৫০+ সেকেন্ড নিতে পারে, তাই ৩০s timeout
     const [rSt, rBs] = await Promise.all([
       fetch("/api/stats",{signal:ac.signal}),
       fetch("/api/bot/status",{signal:ac.signal})
@@ -2130,10 +2145,14 @@ async function refresh(){
     _refreshFails=0;
   }catch(e){
     _refreshFails++;
-    const st=document.getElementById("sTxt"); if(st) st.textContent="⚠️ এরর: "+(e&&e.message?e.message:String(e)).slice(0,60);
-    const ts=document.getElementById("tStatus"); if(ts) ts.textContent="⚠️ এরর দেখো নিচে";
-    console.error("[refresh error]", e);
-    showGlobalError("refresh() failed: "+((e&&e.stack)?e.stack:String(e)));
+    // Render free instance spin-up (৫০s+) বা নেটওয়ার্ক সমস্যায় চুপচাপ retry — popup দিয়ে UI block করা ঠিক না
+    const ts=document.getElementById("tStatus");
+    if(_refreshFails<=3){
+      if(ts) ts.textContent="🔄 সংযোগ হচ্ছে...";
+    } else {
+      if(ts) ts.textContent="⚠️ retry #"+_refreshFails;
+    }
+    console.warn("[refresh error #"+_refreshFails+"]", e&&e.message);
   }
 }
 let _refreshFails=0;
@@ -2628,9 +2647,10 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape") document.querySelectorAll(".mbg.open").forEach(m=>m.classList.remove("open"));
 });
 
-// INIT
+// INIT — আগে WS connect করো; ws.onopen থেকেই refresh() call হবে
+// তাই এখানে আলাদা refresh() লাগবে না। fallback: ১৫s পরে একবার নিশ্চিত করা
 connectWS();
-refresh();
-setInterval(refresh,10000);
+setTimeout(()=>{ if(_refreshFails>0||!_wsConnected) refresh(); },15000);
+setInterval(refresh,15000); // ১০s → ১৫s, Render free-তে ঘন ঘন call করলে rate limit হতে পারে
 </script>
 </body></html>`;}
