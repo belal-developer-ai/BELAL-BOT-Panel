@@ -8,7 +8,7 @@ const fs        = require("fs");
 const path      = require("path");
 const https     = require("https");
 const http2     = require("http");
-const { spawn, execSync } = require("child_process");
+const { spawn, fork, execSync, spawnSync } = require("child_process");
 const archiver  = require("archiver");
 const unzipper  = require("unzipper");
 
@@ -31,44 +31,51 @@ const BDIR  = path.join(__dirname, "bot");
 const LFILE = path.join(__dirname, "panel.log");
 const SFILE = path.join(__dirname, "stats.json");
 const LTFILE = path.join(__dirname, "lifetime.json"); // panel/bot RAM + mongo ব্যবহারের সর্বকালীন উচ্চতম (lifetime peak) — MongoDB-তেও ব্যাকআপ থাকে, তাই panel restart হলেও হারায় না
+const AFILE = path.join(__dirname, "alerts.json"); // ইন-প্যানেল লাইফটাইম অ্যালার্ট/নোটিফিকেশন হিস্ট্রি — MongoDB-তেও ব্যাকআপ থাকে
 const PORT  = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || "mongodb+srv://belal:belal123456@cluster0.i1wofni.mongodb.net/botpanel?appName=Cluster0";
 
 function loadJ(f,def={}){try{return JSON.parse(fs.readFileSync(f,"utf8"));}catch{return def;}}
 function saveJ(f,d){try{fs.writeFileSync(f,JSON.stringify(d,null,2));}catch{}}
 
-// panel.config.json শুধু লোকাল ডিস্কে (ephemeral) থাকলে container restart এ হারিয়ে
-// যায় (Auto Restart টগল, পাসওয়ার্ড ইত্যাদি সব রিসেট হয়ে যায়) — তাই MongoDB তেও
-// একটা কপি রাখা হয়, boot এর সময় সেখান থেকে ফিরিয়ে আনা হয়
-function saveCfg(){
-  saveJ(CFG,cfg);
-  if(db_connected && FileModel){
-    FileModel.findOneAndUpdate(
-      {path:"__panel_config__"},
-      {path:"__panel_config__", content:Buffer.from(JSON.stringify(cfg)), isDir:false, mtime:new Date(), size:JSON.stringify(cfg).length},
-      {upsert:true}
-    ).catch(e=>console.log("⚠️ saveCfg mongo error:",e.message));
-  }
-}
-async function loadCfgFromMongo(){
-  try{
-    if(!db_connected||!FileModel) return;
-    const doc=await FileModel.findOne({path:"__panel_config__"});
-    if(doc && doc.content){
-      const saved=JSON.parse(doc.content.toString());
-      Object.assign(cfg, saved);
-      if(cfg.autoRestart!==undefined) autoRestart=!!cfg.autoRestart;
-      saveJ(CFG,cfg);
-      console.log("✅ প্যানেল সেটিংস MongoDB থেকে ফিরিয়ে আনা হয়েছে (Auto Restart:", autoRestart, ")");
-    }
-  }catch(e){console.log("⚠️ loadCfgFromMongo error:",e.message);}
-}
-
 let cfg   = loadJ(CFG);
+if(!cfg.authToken){ cfg.authToken = require("crypto").randomBytes(24).toString("hex"); saveJ(CFG,cfg); }
+function getCookies(req){
+  const out={}; const h=req.headers.cookie;
+  if(h) h.split(";").forEach(p=>{ const i=p.indexOf("="); if(i>0) out[p.slice(0,i).trim()]=decodeURIComponent(p.slice(i+1).trim()); });
+  return out;
+}
 let stats = loadJ(SFILE,{starts:0,crashes:0,totalUptime:0,history:[],loginAttempts:{}});
 let lifetime = loadJ(LTFILE,{peakPanelMB:0,peakBotMB:0,peakMongoMB:0,firstSeen:new Date().toISOString()});
 const PASS = process.env.PANEL_PASSWORD || cfg.password || "admin123";
 if(!fs.existsSync(BDIR)) fs.mkdirSync(BDIR,{recursive:true});
+
+// ── ইন-প্যানেল লাইফটাইম অ্যালার্ট সিস্টেম (ফোনে পুশ নোটিফিকেশনের বদলে — সবকিছু ওয়েবসাইটের ভিতরেই) ──
+// প্রতিটা গুরুত্বপূর্ণ ঘটনা (ক্র্যাশ, প্রতিরোধমূলক রিস্টার্ট, স্টোরেজ সতর্কতা ইত্যাদি) এখানে জমা থাকে,
+// MongoDB-তে ব্যাকআপসহ — তাই প্যানেল যতবারই restart হোক, অ্যালার্ট হিস্ট্রি হারায় না
+let alerts = loadJ(AFILE, []);
+let _alertCooldowns = {};
+function notify(level, title, message, {cooldownKey=null, cooldownMs=0} = {}){
+  if(cooldownKey){
+    const last=_alertCooldowns[cooldownKey]||0;
+    if(Date.now()-last < cooldownMs) return; // এখনো কুলডাউনে, স্কিপ
+    _alertCooldowns[cooldownKey]=Date.now();
+  }
+  const entry = { id: Date.now()+"-"+Math.random().toString(36).slice(2,7), time: new Date().toISOString(), level, title, message, read:false };
+  alerts.push(entry);
+  if(alerts.length>500) alerts.shift(); // সাম্প্রতিক ৫০০টা যথেষ্ট, তার বেশি দরকার নেই
+  saveJ(AFILE, alerts);
+  saveAlertsToMongo(); // fire-and-forget ব্যাকআপ
+  bc({type:"alert", data: entry});
+}
+async function saveAlertsToMongo(){ await saveToMongo("__panel_alerts__", JSON.stringify(alerts), false); }
+async function restoreAlertsFromMongo(){
+  if(!db_connected || !FileModel) return;
+  try{
+    const a = await FileModel.findOne({path:"__panel_alerts__"});
+    if(a && a.content){ try{ alerts = JSON.parse(a.content.toString()); saveJ(AFILE, alerts); }catch{} }
+  }catch(e){ console.log("⚠️ alerts restore error:", e.message); }
+}
 
 // ── MONGODB ──
 let mongoose, FileModel, db_connected = false;
@@ -89,11 +96,9 @@ async function connectMongo(){
     });
     FileModel = mongoose.models.BotFile || mongoose.model("BotFile", fileSchema);
 
-    // প্যানেল সেটিংস (Auto Restart টগল ইত্যাদি) MongoDB থেকে ফিরিয়ে আনা
-    await loadCfgFromMongo();
-
     // restore files from MongoDB on startup
     await restorePanelPersistent();
+    await restoreAlertsFromMongo();
     await restoreFromMongo();
     await importRepoZipIfPresent();
 
@@ -204,6 +209,13 @@ async function deleteFromMongo(relPath){
   } catch(e){ console.log("⚠️ mongo delete error:", e.message); }
 }
 
+// প্যানেল থেকে ফাইল অ্যাড/এডিট/ডিলিট হলে সাথে সাথে (fs.watch-এর অপেক্ষা না করে) বটকে সরাসরি IPC দিয়ে জানানো —
+// fs.watch কিছু কন্টেইনার ফাইলসিস্টেমে অনির্ভরযোগ্য/দেরিতে ফায়ার করতে পারে, IPC সবসময় তাৎক্ষণিক ও নির্ভরযোগ্য
+function notifyBotFile(action, relPath){
+  if(!botProc || !botProc.connected) return;
+  try{ botProc.send({ type: "panel_file_change", action, relPath }); }catch{}
+}
+
 // ── প্যানেলের নিজস্ব stats.json ও lifetime.json MongoDB-তে ব্যাকআপ/রিস্টোর ──
 // (Render-এর ডিস্ক ephemeral, তাই এগুলো শুধু ডিস্কে রাখলে প্যানেল restart হলেই "লাইফটাইম" হিসাব শূন্য হয়ে যেত)
 async function savePanelStatsToMongo(){ await saveToMongo("__panel_stats__", JSON.stringify(stats), false); }
@@ -272,11 +284,17 @@ app.use(express.urlencoded({extended:true,limit:"500mb"}));
 app.use(session({secret:process.env.SESSION_SECRET||"belal_bot_panel_2024",resave:false,saveUninitialized:false,cookie:{maxAge:7*24*60*60*1000}}));
 const upload = multer({storage:multer.diskStorage({destination:(r,f,cb)=>cb(null,"/tmp/"),filename:(r,f,cb)=>cb(null,Date.now()+"_"+f.originalname)}),limits:{fileSize:500*1024*1024}});
 
-const auth = (req,res,next) => req.session.ok ? next() : res.redirect("/login");
+const auth = (req,res,next) => {
+  const okSession = req.session && req.session.ok;
+  const okToken = getCookies(req).authToken === cfg.authToken;
+  if(okSession || okToken) return next();
+  if(req.path.startsWith("/api/")) return res.status(401).json({error:"session expired — আবার লগইন করো"});
+  res.redirect("/login");
+};
 const safe = (base,rel) => { const f=path.resolve(base,rel||""); if(!f.startsWith(path.resolve(base))) throw new Error("Access denied"); return f; };
 
 // ── BOT ──
-let botProc=null, botLogs=[], botStart=null, autoRestart=cfg.autoRestart||false, rsTimer=null, _consecutiveCrashes=0;
+let botProc=null, botLogs=[], botStart=null, botReady=false, autoRestart=true, rsTimer=null, _consecutiveCrashes=0, _installInProgress=false; // ── Auto-Restart সবসময় ON থাকবে (ইউজারের সিদ্ধান্ত অনুযায়ী) — বন্ধ করার অপশন সরিয়ে দেওয়া হয়েছে
 
 function bc(d){wss.clients.forEach(c=>{if(c.readyState===WebSocket.OPEN)c.send(JSON.stringify(d));});}
 
@@ -311,51 +329,119 @@ async function getShouldRun(){
 
 function startBot(by="manual"){
   if(botProc) return {ok:false,msg:"বট ইতিমধ্যে চলছে"};
+  if(_installInProgress) return {ok:false,msg:"📦 npm install ইতিমধ্যে ব্যাকগ্রাউন্ডে চলছে — শেষ হওয়া পর্যন্ত অপেক্ষা করো"};
   const idx=["index.js","app.js","main.js","bot.js","start.js"].find(f=>fs.existsSync(path.join(BDIR,f)));
   if(!idx) return {ok:false,msg:"index.js পাওয়া যায়নি — বট আপলোড করুন"};
-  const pkgFile=path.join(BDIR,"package.json");
   const nmDir=path.join(BDIR,"node_modules");
-  if(!fs.existsSync(nmDir)){
-    try{log("📦 npm install চলছে...","warn");execSync("npm install",{cwd:BDIR,timeout:180000});log("✅ npm install সম্পন্ন","success");}
-    catch(e){log("⚠️ npm install সমস্যা: "+e.message,"error");}
+
+  function actuallySpawnBot(){
+    botProc=fork(idx,[],{cwd:BDIR,env:{...process.env,FORCE_COLOR:"1"},stdio:["ignore","pipe","pipe","ipc"]});
+    botStart=Date.now(); botReady=false; stats.starts++; saveJ(SFILE,stats); savePanelStatsToMongo();
+    setShouldRun(true);
+    log(`🟡 বট চালু হচ্ছে (${by}) — ${idx}`,"warn"); bc({type:"status",running:false,starting:true});
+    const NOISY=[
+      /Warning: Accessing non-existent property/i,/circular dependency/i,/--trace-warnings/i,/\[DEP\d+\]/i,/is deprecated\. Please use/i,
+      /node_modules[\\/](mqtt|fca-unofficial|bluebird)[\\/]/i,     // fca-unofficial/mqtt-এর নিজস্ব internal stack trace লাইন
+      /at (MqttClient|Writable|Duplexify|Socket|TLSSocket|writeOrBuffer|doWrite|addChunk)/i, // mqtt লাইব্রেরির internal কল-স্ট্যাক
+      /not part of the conversation \d+/i,                          // bot যে গ্রুপে নেই, সেখানে পুরনো মেসেজ পাঠানোর normal ব্যর্থতা
+      /Cannot get MQTT region/i,                                    // fca-unofficial-এর পরিচিত, প্রভাবহীন warning
+      /ScreenTime and Badge telemetry/i,                            // fca-unofficial-এর normal telemetry নোটিশ
+      /Unrecognized option given to setOptions/i,                   // fca-unofficial-এর পুরনো config warning, ক্ষতিকর না
+      /unsendMessage.*(isNotCritical|rid:|payload:|lid:)/i          // পুরনো মেসেজ unsend করতে ব্যর্থ হওয়ার normal detail, গুরুত্বপূর্ণ না
+    ];
+    const isNoisy=s=>NOISY.some(rx=>rx.test(s));
+    // eslint-disable-next-line no-control-regex
+    const stripAnsi=s=>s.replace(/\x1B\[[0-9;]*[a-zA-Z]/g,"");
+    const classify=(s)=>{
+      if(/\[ক্রটি\]|ERR!|❌|Unhandled Rejection|uncaughtException/i.test(s)) return "error";
+      if(/\[সতর্ক\]|⚠️|WARN\b/i.test(s)) return "warn";
+      if(/\[সফল\]|✅|সফলভাবে/i.test(s)) return "success";
+      return "info";
+    };
+    const cleanPrefix=(s)=> s.replace(/^\s*[⚠️❌✅]*\s*\[(সতর্ক|ক্রটি|সফল|তথ্য)\]\s*»\s*/u,"").replace(/^\s*[⚠️❌✅ℹ️]+\s*/u,"").trim();
+    botProc.stdout.on("data",d=>{const s=stripAnsi(d.toString()).trim();if(s&&!isNoisy(s))log(cleanPrefix(s),classify(s));});
+    botProc.stderr.on("data",d=>{const s=stripAnsi(d.toString()).trim();if(s&&!isNoisy(s))log(cleanPrefix(s),"error");});
+    botProc.on("message",(msg)=>{
+      if(msg?.type==="bot_ready"){
+        botReady=true;
+        log(`✅ বট সম্পূর্ণ প্রস্তুত — ${msg.commands||0} কমান্ড লোড হয়েছে (${msg.failed||0} ব্যর্থ)`,"success");
+        bc({type:"status",running:true,starting:false,ready:true});
+      }
+    });
+    botProc.on("exit",(code,sig)=>{
+      const up=botStart?Math.floor((Date.now()-botStart)/1000):0;
+      stats.totalUptime+=up; stats.history.push({date:new Date().toISOString(),uptime:up,code:code||sig});
+      if(stats.history.length>100) stats.history.shift();
+      if(code!==0&&code!==null){
+        stats.crashes++;
+        try{
+          fs.writeFileSync(path.join(BDIR,".crash_flag.json"), JSON.stringify({
+            time: new Date().toISOString(), code: code||sig, uptimeSec: up
+          }));
+        }catch{}
+        notify("error", "🔴 বট ক্র্যাশ করেছে!", `কোড: ${code||sig} | আগের সেশন সচল ছিল: ${fmtS(up)} | Auto-restart চেষ্টা চলছে...`);
+      }
+      saveJ(SFILE,stats); savePanelStatsToMongo();
+      log(`🔴 বট বন্ধ (code:${code||sig}, uptime:${fmtS(up)})`,"error");
+      botProc=null; botStart=null; botReady=false; bc({type:"status",running:false,starting:false,ready:false});
+      if(autoRestart&&code!==0&&code!==null){
+        // ── উঠতি-ধাপে অপেক্ষা (exponential backoff) ──
+        // দ্রুত/বারবার ক্র্যাশ হলে (বিশেষত ফেসবুকের 429 rate-limit) প্রতিবার
+        // অপেক্ষার সময় বাড়বে, যাতে ফেসবুককে বারবার বিরক্ত করে ব্লক আরও
+        // দীর্ঘায়িত না করি। বট মোটামুটি স্থিতিশীলভাবে (২ মিনিট+) চললে
+        // কাউন্টার রিসেট হয়ে যাবে।
+        if(up>=120) _consecutiveCrashes=0; else _consecutiveCrashes++;
+        const waitSec=Math.min(10*Math.pow(2,_consecutiveCrashes),300); // ১০সে থেকে সর্বোচ্চ ৫মিনিট
+        log(`🔄 Auto-restart ${waitSec} সেকেন্ড পরে... (পরপর ${_consecutiveCrashes} বার ক্র্যাশ)`,"warn");
+        rsTimer=setTimeout(()=>startBot("auto-restart"),waitSec*1000);
+      }
+    });
   }
-  botProc=spawn("node",[idx],{cwd:BDIR,env:{...process.env,FORCE_COLOR:"1"}});
-  botStart=Date.now(); stats.starts++; saveJ(SFILE,stats); savePanelStatsToMongo();
-  setShouldRun(true);
-  log(`🟢 বট চালু (${by}) — ${idx}`,"success"); bc({type:"status",running:true});
-  const NOISY=[/Warning: Accessing non-existent property/i,/circular dependency/i,/--trace-warnings/i,/\[DEP\d+\]/i,/is deprecated\. Please use/i];
-  const isNoisy=s=>NOISY.some(rx=>rx.test(s));
-  // eslint-disable-next-line no-control-regex
-  const stripAnsi=s=>s.replace(/\x1B\[[0-9;]*[a-zA-Z]/g,"");
-  botProc.stdout.on("data",d=>{const s=stripAnsi(d.toString()).trim();if(s&&!isNoisy(s))log(s,"info");});
-  botProc.stderr.on("data",d=>{const s=stripAnsi(d.toString()).trim();if(s&&!isNoisy(s))log(s,"error");});
-  botProc.on("exit",(code,sig)=>{
-    const up=botStart?Math.floor((Date.now()-botStart)/1000):0;
-    stats.totalUptime+=up; stats.history.push({date:new Date().toISOString(),uptime:up,code:code||sig});
-    if(stats.history.length>100) stats.history.shift();
-    if(code!==0&&code!==null){
-      stats.crashes++;
-      try{
-        fs.writeFileSync(path.join(BDIR,".crash_flag.json"), JSON.stringify({
-          time: new Date().toISOString(), code: code||sig, uptimeSec: up
-        }));
-      }catch{}
-    }
-    saveJ(SFILE,stats); savePanelStatsToMongo();
-    log(`🔴 বট বন্ধ (code:${code||sig}, uptime:${fmtS(up)})`,"error");
-    botProc=null; botStart=null; bc({type:"status",running:false});
-    if(autoRestart&&code!==0&&code!==null){
-      // ── উঠতি-ধাপে অপেক্ষা (exponential backoff) ──
-      // দ্রুত/বারবার ক্র্যাশ হলে (বিশেষত ফেসবুকের 429 rate-limit) প্রতিবার
-      // অপেক্ষার সময় বাড়বে, যাতে ফেসবুককে বারবার বিরক্ত করে ব্লক আরও
-      // দীর্ঘায়িত না করি। বট মোটামুটি স্থিতিশীলভাবে (২ মিনিট+) চললে
-      // কাউন্টার রিসেট হয়ে যাবে।
-      if(up>=120) _consecutiveCrashes=0; else _consecutiveCrashes++;
-      const waitSec=Math.min(10*Math.pow(2,_consecutiveCrashes),300); // ১০সে থেকে সর্বোচ্চ ৫মিনিট
-      log(`🔄 Auto-restart ${waitSec} সেকেন্ড পরে... (পরপর ${_consecutiveCrashes} বার ক্র্যাশ)`,"warn");
-      rsTimer=setTimeout(()=>startBot("auto-restart"),waitSec*1000);
-    }
-  });
+
+  if(!fs.existsSync(nmDir)){
+    // ⚠️ আগে এখানে execSync ব্যবহার হতো, যেটা npm install শেষ না হওয়া পর্যন্ত
+    // পুরো ওয়েবসাইটকেই (Express সার্ভার) ফ্রিজ করে রাখত — এখন async spawn,
+    // তাই ওয়েবসাইট npm install চলাকালীনও স্বাভাবিকভাবে খোলা/ব্যবহার করা যাবে
+    _installInProgress = true;
+    const ramBefore = Math.round(process.memoryUsage().rss/1024/1024);
+    log(`📦 npm install শুরু — ব্যাকগ্রাউন্ডে (এই মুহূর্তে RAM: ${ramBefore}MB)`,"warn");
+    bc({type:"status",running:false,installing:true});
+    const npmProc = spawn(process.platform==="win32"?"npm.cmd":"npm", ["install","--omit=dev","--no-audit","--no-fund","--prefer-offline"], {cwd:BDIR});
+    let npmErr="", npmBuf="";
+    const flushLine=(s)=>{
+      npmBuf += s;
+      let i;
+      while((i=npmBuf.indexOf("\n"))>=0){
+        const line=npmBuf.slice(0,i).trim(); npmBuf=npmBuf.slice(i+1);
+        if(line) log("📦 "+line,"info");
+      }
+    };
+    npmProc.stdout.on("data",d=>flushLine(d.toString()));
+    npmProc.stderr.on("data",d=>{const s=d.toString();npmErr+=s;flushLine(s);});
+    // ── নিরাপত্তা: npm install যদি কোনো কারণে ৫ মিনিটেও শেষ না হয় (ঝুলে যায়),
+    // জোর করে বন্ধ করে lock ছেড়ে দেওয়া হবে — যাতে সিস্টেম চিরস্থায়ীভাবে আটকে না থাকে
+    const hangGuard = setTimeout(()=>{
+      log("⚠️ npm install ৫ মিনিটেও শেষ হয়নি — জোর করে বন্ধ করা হলো","error");
+      try{ npmProc.kill("SIGKILL"); }catch{}
+    }, 5*60*1000);
+    npmProc.on("exit",(code)=>{
+      clearTimeout(hangGuard);
+      _installInProgress = false;
+      const ramAfter = Math.round(process.memoryUsage().rss/1024/1024);
+      if(code===0){
+        log(`✅ npm install সম্পন্ন — সব প্যাকেজ ইনস্টল হয়েছে (RAM এখন: ${ramAfter}MB)`,"success");
+        actuallySpawnBot();
+      } else {
+        log(`⚠️ npm install ব্যর্থ (code ${code}, RAM এখন: ${ramAfter}MB): `+npmErr.slice(-300),"error");
+        notify("error", "⚠️ npm install ব্যর্থ", "বট চালু করা যায়নি — dependency install fail করেছে। প্যানেলের লগ দেখো।");
+        bc({type:"status",running:false});
+      }
+    });
+    npmProc.on("error",(e)=>{ clearTimeout(hangGuard); _installInProgress=false; log("⚠️ npm install চালু করতে ব্যর্থ: "+e.message,"error"); });
+    return {ok:true,msg:"📦 npm install ব্যাকগ্রাউন্ডে শুরু হয়েছে — একটু পর বট নিজে থেকেই চালু হয়ে যাবে, ওয়েবসাইট এখনই স্বাভাবিকভাবে ব্যবহার করা যাবে"};
+  }
+
+  actuallySpawnBot();
   return {ok:true,msg:"বট চালু হয়েছে"};
 }
 
@@ -363,7 +449,7 @@ function stopBot(){
   if(rsTimer){clearTimeout(rsTimer);rsTimer=null;}
   if(!botProc) return {ok:false,msg:"বট চলছে না"};
   try{botProc.kill("SIGTERM");setTimeout(()=>{try{if(botProc)botProc.kill("SIGKILL");}catch{}},5000);}catch{}
-  botProc=null; botStart=null;
+  botProc=null; botStart=null; botReady=false;
   setShouldRun(false);
   log("🔴 বট বন্ধ করা হয়েছে","warn"); bc({type:"status",running:false});
   return {ok:true,msg:"বট বন্ধ হয়েছে"};
@@ -390,52 +476,123 @@ setInterval(()=>{
   }
 },10000);
 
+// ── কানেকশন-রিফ্রেশ (প্রতি ৬ ঘণ্টায়) ──
+// fca-unofficial (unofficial FB API লাইব্রেরি)-র একটা পরিচিত সমস্যা আছে: বট প্রসেস বেঁচে থাকে
+// (প্যানেলে "✅ চলছে" দেখায়) কিন্তু Facebook-এর real-time message listener (MQTT) মাঝে মাঝে
+// নিঃশব্দে বন্ধ হয়ে যায় — কোনো ক্র্যাশ ছাড়াই, তাই প্যানেল এটা নিজে থেকে ধরতে পারে না।
+// এটা কোড দিয়ে ১০০% বন্ধ করা যায় না (unofficial API-র নিজস্ব সীমাবদ্ধতা), কিন্তু নিয়মিত
+// বিরতিতে connection রিফ্রেশ করলে ঝুঁকি অনেকটাই কমে — তাই প্রতি ৬ ঘণ্টায় একবার প্রতিরোধমূলক restart।
+setInterval(()=>{
+  if(!botProc || !botReady || !botStart) return;
+  const upHours = (Date.now()-botStart)/(3600*1000);
+  if(upHours >= 6){
+    log("🔄 কানেকশন-রিফ্রেশ — Facebook-এর real-time listener নিঃশব্দে বন্ধ হওয়া ঠেকাতে প্রতিরোধমূলক রিস্টার্ট","warn");
+    notify("info", "🔄 কানেকশন-রিফ্রেশ", "প্রতি ৬ ঘণ্টায় প্রতিরোধমূলক রিস্টার্ট হয়েছে (Facebook listener সতেজ রাখতে)।", {cooldownKey:"conn-refresh", cooldownMs:5*60*60*1000});
+    stopBot(); setTimeout(()=>startBot("connection-refresh"),3000);
+  }
+},10*60*1000); // প্রতি ১০ মিনিটে চেক করা হয়, কিন্তু আসল রিস্টার্ট ৬ ঘণ্টা পার হলেই একবার
+
+// ── প্রতিরোধমূলক RAM গার্ড ── প্যানেল খোলা থাকুক বা না থাকুক, প্রতি ৩০ সেকেন্ডে ব্যাকগ্রাউন্ডে
+// নিজে থেকেই চেক করে — RAM যদি ক্রমাগত ৪৭০MB+ থাকে (Render-এর ৫১২MB হার্ড সীমার কাছাকাছি),
+// তাহলে OOM crash হওয়ার আগেই বট নিজে থেকে গ্রেসফুলি রিস্টার্ট করে দেয় — আর ফোনে সাথে সাথে জানিয়ে দেয়
+let _highRamStreak = 0;
+setInterval(()=>{
+  if(!botProc) { _highRamStreak=0; return; }
+  const botMB = getBotMemMB();
+  if(botMB==null) return;
+  if(botMB >= 470){
+    _highRamStreak++;
+    if(_highRamStreak>=3){ // পরপর ৩ বার (≈১.৫ মিনিট) উচ্চ থাকলেই তবে রিস্টার্ট — এক-দুইবারের স্পাইকে না
+      log(`🛡️ প্রতিরোধমূলক রিস্টার্ট — বট RAM ${botMB}MB (৫১২MB সীমার কাছাকাছি)`,"warn");
+      notify("warn", "🛡️ প্রতিরোধমূলক রিস্টার্ট", `বট RAM ${botMB}MB ছুঁয়ে ফেলেছিল (সীমা ৫১২MB) — ক্র্যাশ হওয়ার আগেই নিজে থেকে নিরাপদে রিস্টার্ট করা হলো।`, {cooldownKey:"preventive-restart", cooldownMs:10*60*1000});
+      _highRamStreak=0;
+      stopBot(); setTimeout(()=>startBot("preventive-ram-guard"),3000);
+    }
+  } else {
+    _highRamStreak=0;
+  }
+},30*1000);
+
+// ── MongoDB স্টোরেজ প্রায় শেষ হয়ে গেলে দিনে একবার সতর্ক করা ──
+setInterval(async()=>{
+  if(!db_connected || !mongoose?.connection?.db) return;
+  try{
+    const s = await mongoose.connection.db.stats();
+    const usedMB = (s.dataSize+s.indexSize)/1024/1024;
+    if(usedMB > 512*0.85){
+      notify("warn", "⚠️ MongoDB স্টোরেজ প্রায় শেষ", `${Math.round(usedMB)}MB / 512MB ব্যবহার হয়ে গেছে (Atlas M0 ফ্রি সীমা)। পুরনো/অপ্রয়োজনীয় ডেটা সরানো দরকার হতে পারে।`, {cooldownKey:"mongo-storage-warn", cooldownMs:24*60*60*1000});
+    }
+  }catch{}
+},30*60*1000); // প্রতি ৩০ মিনিটে চেক, কিন্তু নোটিফিকেশন দিনে একবারের বেশি না (cooldown দিয়ে)
+
 // ── ROUTES: AUTH ──
 app.get("/ping",(req,res)=>res.json({ok:true,running:!!botProc,mongo:db_connected,time:new Date().toISOString()}));
 app.get("/health",(req,res)=>res.json({ok:true}));
-app.get("/login",(req,res)=>{if(req.session.ok)return res.redirect("/");res.send(loginHTML());});
-// ── Login brute-force সুরক্ষা ── বারবার ভুল পাসওয়ার্ড দিলে সাময়িক ব্লক
-const loginAttempts = new Map(); // ip -> {count, lockUntil}
+app.get("/login",(req,res)=>{
+  res.set("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");res.set("Pragma","no-cache");res.set("Expires","0");
+  if(req.session.ok||getCookies(req).authToken===cfg.authToken)return res.redirect("/");
+  res.send(loginHTML());
+});
 app.post("/login",(req,res)=>{
-  const ip = req.ip || req.connection.remoteAddress || "unknown";
-  const rec = loginAttempts.get(ip) || {count:0, lockUntil:0};
-  if(Date.now() < rec.lockUntil){
-    const waitSec = Math.ceil((rec.lockUntil-Date.now())/1000);
-    return res.json({ok:false,msg:`⛔ অনেকবার ভুল পাসওয়ার্ড দেওয়া হয়েছে — ${waitSec} সেকেন্ড পর আবার চেষ্টা করো`});
-  }
   if(req.body.password===PASS){
     req.session.ok=true;
-    loginAttempts.delete(ip);
+    res.append("Set-Cookie", `authToken=${cfg.authToken}; Max-Age=${30*24*60*60}; Path=/; HttpOnly; SameSite=Lax`);
     res.json({ok:true});
-  } else {
-    rec.count++;
-    if(rec.count>=5){ rec.lockUntil = Date.now()+5*60*1000; rec.count=0; } // ৫ বার ভুল হলে ৫ মিনিট লক
-    loginAttempts.set(ip, rec);
-    res.json({ok:false,msg:"❌ ভুল পাসওয়ার্ড"});
   }
+  else res.json({ok:false,msg:"❌ ভুল পাসওয়ার্ড"});
 });
-app.get("/logout",(req,res)=>{req.session.destroy();res.redirect("/login");});
-app.get("/"   ,auth,(req,res)=>res.send(mainHTML()));
+app.get("/logout",(req,res)=>{req.session.destroy(()=>{}); res.append("Set-Cookie","authToken=; Max-Age=0; Path=/"); res.redirect("/login");});
+app.get("/"   ,auth,(req,res)=>{res.set("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");res.set("Pragma","no-cache");res.set("Expires","0");res.send(mainHTML());});
 
 // ── BOT API ──
 app.post("/api/bot/start",   auth,(req,res)=>res.json(startBot()));
 app.post("/api/bot/stop",    auth,(req,res)=>res.json(stopBot()));
 app.post("/api/bot/restart", auth,(req,res)=>{stopBot();setTimeout(()=>res.json(startBot("restart")),2000);});
-app.get("/api/bot/status",   auth,(req,res)=>res.json({running:!!botProc,uptime:botStart?Math.floor((Date.now()-botStart)/1000):0}));
+app.get("/api/bot/status",   auth,(req,res)=>res.json({running:!!botProc,ready:botReady,uptime:botStart?Math.floor((Date.now()-botStart)/1000):0}));
 app.get("/api/bot/logs",     auth,(req,res)=>res.json({logs:botLogs}));
 app.post("/api/bot/clearlogs",auth,(req,res)=>{botLogs=[];bc({type:"clearLogs"});res.json({ok:true});});
 app.post("/api/bot/install", auth,(req,res)=>{
   if(!fs.existsSync(path.join(BDIR,"package.json"))) return res.json({ok:false,msg:"package.json নেই"});
-  try{log("📦 npm install চলছে...","warn");execSync("npm install",{cwd:BDIR,timeout:180000});log("✅ সম্পন্ন","success");res.json({ok:true,msg:"npm install সম্পন্ন"});}
-  catch(e){log("❌ npm install ব্যর্থ: "+e.message,"error");res.json({ok:false,msg:e.message});}
+  if(_installInProgress) return res.json({ok:false,msg:"📦 npm install ইতিমধ্যে চলছে"});
+  _installInProgress = true;
+  log("📦 npm install শুরু (ম্যানুয়াল, ব্যাকগ্রাউন্ডে)...","warn");
+  const npmProc = spawn(process.platform==="win32"?"npm.cmd":"npm", ["install","--omit=dev","--no-audit","--no-fund","--prefer-offline"], {cwd:BDIR});
+  let npmErr="", npmBuf="";
+  const flushLine=(s)=>{npmBuf+=s;let i;while((i=npmBuf.indexOf("\n"))>=0){const line=npmBuf.slice(0,i).trim();npmBuf=npmBuf.slice(i+1);if(line)log("📦 "+line,"info");}};
+  npmProc.stdout.on("data",d=>flushLine(d.toString()));
+  npmProc.stderr.on("data",d=>{const s=d.toString();npmErr+=s;flushLine(s);});
+  const hangGuard=setTimeout(()=>{log("⚠️ npm install ৫ মিনিটেও শেষ হয়নি — বন্ধ করা হলো","error");try{npmProc.kill("SIGKILL");}catch{}},5*60*1000);
+  npmProc.on("exit",(code)=>{
+    clearTimeout(hangGuard); _installInProgress=false;
+    if(code===0) log("✅ npm install সম্পন্ন","success");
+    else log("❌ npm install ব্যর্থ: "+npmErr.slice(-300),"error");
+  });
+  npmProc.on("error",(e)=>{clearTimeout(hangGuard);_installInProgress=false;log("⚠️ npm install চালু করতে ব্যর্থ: "+e.message,"error");});
+  res.json({ok:true,msg:"📦 npm install ব্যাকগ্রাউন্ডে শুরু হয়েছে — লগে অগ্রগতি দেখতে পারবে"});
 });
-app.post("/api/bot/autorestart",auth,(req,res)=>{autoRestart=!!req.body.enabled;cfg.autoRestart=autoRestart;saveCfg();res.json({ok:true,enabled:autoRestart});});
+app.post("/api/bot/autorestart",auth,(req,res)=>{autoRestart=true;cfg.autoRestart=true;saveJ(CFG,cfg);res.json({ok:true,enabled:true,note:"Auto-Restart সবসময় ON থাকে, বন্ধ করা যায় না"});});
 app.get("/api/bot/downloadlog",auth,(req,res)=>{if(fs.existsSync(LFILE))res.download(LFILE,"bot.log");else res.status(404).send("No log");});
 app.post("/api/bot/clearlogfile",auth,(req,res)=>{try{fs.writeFileSync(LFILE,"");res.json({ok:true});}catch(e){res.json({ok:false,msg:e.message});}});
 
+let _fileCountCache = {value:0, at:0};
+function countF(d){
+  if(Date.now()-_fileCountCache.at < 60000) return _fileCountCache.value; // ৬০ সেকেন্ড ক্যাশ — বারবার ভারী ডিস্ক-স্ক্যান এড়ানো
+  function walk(dir){
+    let c=0;
+    try{
+      fs.readdirSync(dir).forEach(f=>{
+        if(f==="node_modules"||f===".git") return; // এগুলো বট ফাইল না, গুনে লাভ নেই — শুধু সময় নষ্ট
+        const s=fs.statSync(path.join(dir,f));
+        c+=s.isDirectory()?walk(path.join(dir,f)):1;
+      });
+    }catch{}
+    return c;
+  }
+  _fileCountCache = {value: walk(d), at: Date.now()};
+  return _fileCountCache.value;
+}
 app.get("/api/stats",auth,(req,res)=>{
-  function countF(d){let c=0;try{fs.readdirSync(d).forEach(f=>{const s=fs.statSync(path.join(d,f));c+=s.isDirectory()?countF(path.join(d,f)):1;});}catch{}return c;}
-  res.json({...stats,running:!!botProc,currentUptime:botStart?Math.floor((Date.now()-botStart)/1000):0,
+  res.json({...stats,running:!!botProc,ready:botReady,currentUptime:botStart?Math.floor((Date.now()-botStart)/1000):0,
     autoRestart,memMB:Math.round(process.memoryUsage().rss/1024/1024),
     serverUptime:Math.floor(process.uptime()),node:process.version,
     botFiles:countF(BDIR),mongoConnected:db_connected});
@@ -479,6 +636,55 @@ function getHeavyStatus(){
     return {active:raw.active, max:raw.max};
   }catch{ return null; }
 }
+
+// ── নেটওয়ার্ক থ্রুপুট (রিয়েল, /proc/net/dev থেকে) — হ্যাকিং-স্টাইল টার্মিনাল ট্যাবের জন্য ──
+let _netPrev = null;
+function readNetBytes(){
+  try{
+    const raw = fs.readFileSync("/proc/net/dev","utf8");
+    let rx=0, tx=0;
+    raw.split("\n").slice(2).forEach(line=>{
+      const m = line.trim().match(/^([\w.]+):\s*(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
+      if(m && m[1]!=="lo"){ rx += parseInt(m[2],10); tx += parseInt(m[3],10); }
+    });
+    return {rx, tx, t: Date.now()};
+  }catch{ return null; }
+}
+function getNetSpeed(){
+  const now = readNetBytes();
+  if(!now) return {rxKBs:null, txKBs:null};
+  if(!_netPrev){ _netPrev = now; return {rxKBs:0, txKBs:0}; }
+  const dt = (now.t - _netPrev.t)/1000;
+  const rxKBs = dt>0 ? Math.max(0, +((now.rx-_netPrev.rx)/1024/dt).toFixed(1)) : 0;
+  const txKBs = dt>0 ? Math.max(0, +((now.tx-_netPrev.tx)/1024/dt).toFixed(1)) : 0;
+  _netPrev = now;
+  return {rxKBs, txKBs};
+}
+let _cpuPrev = null;
+function getCpuPercent(){
+  const usage = process.cpuUsage(); // মাইক্রোসেকেন্ডে, প্যানেল প্রসেসের নিজের CPU সময়
+  const now = Date.now();
+  if(!_cpuPrev){ _cpuPrev = {usage, t:now}; return 0; }
+  const dtMs = now - _cpuPrev.t;
+  const cpuMs = (usage.user - _cpuPrev.usage.user + usage.system - _cpuPrev.usage.system)/1000;
+  _cpuPrev = {usage, t:now};
+  if(dtMs<=0) return 0;
+  return Math.min(100, Math.round((cpuMs/dtMs)*100));
+}
+app.get("/api/system/terminal",auth,(req,res)=>{
+  const net = getNetSpeed();
+  const botMB = getBotMemMB(), panelMB = Math.round(process.memoryUsage().rss/1024/1024);
+  res.json({
+    ok:true, time:Date.now(),
+    net,
+    cpuPercent: getCpuPercent(),
+    ramPercent: Math.min(100, Math.round(((botMB||0)+panelMB)/512*100)),
+    botRunning: !!botProc, botReady, heavy: getHeavyStatus(),
+    uptimeSec: botStart?Math.floor((Date.now()-botStart)/1000):0,
+    tail: botLogs.slice(-6).map(l=>({time:l.time,text:l.text,type:l.type}))
+  });
+});
+
 app.get("/api/system/live",auth,async(req,res)=>{
   let mongoStats = null;
   if(db_connected && mongoose && mongoose.connection && mongoose.connection.db){
@@ -530,10 +736,13 @@ app.get("/api/files",auth,(req,res)=>{
   try{
     const dir=safe(BDIR,req.query.path||"");
     if(!fs.existsSync(dir))return res.json({items:[],current:req.query.path||""});
-    const items=fs.readdirSync(dir).map(name=>{
-      const f=path.join(dir,name),s=fs.statSync(f);
-      return{name,isDir:s.isDirectory(),size:s.size,mtime:s.mtime,ext:path.extname(name).toLowerCase()};
-    }).sort((a,b)=>(b.isDir-a.isDir)||a.name.localeCompare(b.name));
+    const showHidden = req.query.showHidden==="1";
+    const items=fs.readdirSync(dir)
+      .filter(name=> showHidden || !name.startsWith(".")) // অভ্যন্তরীণ মার্কার ফাইল (.crash_flag.json ইত্যাদি) ডিফল্টে লুকানো — এলোমেলো লাগে
+      .map(name=>{
+        const f=path.join(dir,name),s=fs.statSync(f);
+        return{name,isDir:s.isDirectory(),size:s.size,mtime:s.mtime,ext:path.extname(name).toLowerCase()};
+      }).sort((a,b)=>(b.isDir-a.isDir)||a.name.localeCompare(b.name));
     res.json({items,current:req.query.path||""});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -546,6 +755,81 @@ app.get("/api/file/read",auth,(req,res)=>{
   }catch(e){res.status(500).json({error:e.message});}
 });
 
+// ── 🧪 কমান্ড টেস্টার — সিনট্যাক্স, প্রয়োজনীয় স্ট্রাকচার, dependency, আর ফাইলের ভিতরের API লিংক লাইভ চেক ──
+function testUrl(url){
+  return new Promise(resolve=>{
+    try{
+      const mod = url.startsWith("https") ? https : require("http");
+      const req = mod.request(url, {method:"HEAD", timeout:6000}, r=>{
+        resolve({url, ok: r.statusCode<400, status:r.statusCode});
+        r.resume();
+      });
+      req.on("timeout", ()=>{ req.destroy(); resolve({url, ok:false, status:"timeout"}); });
+      req.on("error", e=>resolve({url, ok:false, status:"error: "+e.message}));
+      req.end();
+    }catch(e){ resolve({url, ok:false, status:"error: "+e.message}); }
+  });
+}
+app.post("/api/file/test",auth,async(req,res)=>{
+  try{
+    const f=safe(BDIR,req.body.path);
+    if(!fs.existsSync(f)) return res.json({ok:false,msg:"ফাইল খুঁজে পাওয়া যায়নি"});
+    const content = fs.readFileSync(f,"utf8");
+    const result = { syntax:null, structure:null, dependencies:[], apis:[] };
+
+    // ১. সিনট্যাক্স চেক
+    const chk = spawnSync(process.execPath, ["--check", f], {timeout:10000});
+    result.syntax = chk.status===0
+      ? {ok:true, msg:"সিনট্যাক্স ঠিক আছে ✅"}
+      : {ok:false, msg:(chk.stderr||"").toString().split("\n").slice(0,4).join(" ")||"সিনট্যাক্স এরর"};
+
+    if(result.syntax.ok){
+      // ২. স্ট্রাকচার চেক — আলাদা isolated প্রসেসে require করা হচ্ছে, যাতে ভাঙা ফাইল মূল প্যানেলকে ক্র্যাশ না করে
+      const probe = spawnSync(process.execPath, ["-e", `
+        try{
+          const cmd = require(${JSON.stringify(f)});
+          const out = {
+            hasConfig: !!(cmd && cmd.config),
+            name: cmd?.config?.name || null,
+            aliases: cmd?.config?.aliases || [],
+            hasRunFn: !!(cmd && (cmd.run || cmd.onStart || cmd.onCall)),
+            dependencies: cmd?.config?.dependencies || {}
+          };
+          console.log("###RESULT###"+JSON.stringify(out));
+        }catch(e){ console.log("###ERROR###"+e.message); }
+      `], {cwd: path.dirname(f), timeout:8000});
+      const out = (probe.stdout||"").toString();
+      if(out.includes("###ERROR###")){
+        result.structure = {ok:false, msg:"ফাইল লোড করতে ব্যর্থ: "+out.split("###ERROR###")[1].trim().slice(0,200)};
+      } else if(out.includes("###RESULT###")){
+        try{
+          const parsed = JSON.parse(out.split("###RESULT###")[1].trim());
+          const problems=[];
+          if(!parsed.hasConfig) problems.push("module.exports.config নেই");
+          if(!parsed.name) problems.push("config.name নেই");
+          if(!parsed.hasRunFn) problems.push("run/onStart/onCall ফাংশন নেই");
+          result.structure = problems.length
+            ? {ok:false, msg:"সমস্যা: "+problems.join(", ")}
+            : {ok:true, msg:`ঠিক আছে ✅ — নাম: "${parsed.name}"${parsed.aliases.length?", alias: "+parsed.aliases.join(", "):""}`};
+          // ৩. Dependency চেক
+          for(const [pkg] of Object.entries(parsed.dependencies||{})){
+            try{ require.resolve(pkg, {paths:[path.join(BDIR,"node_modules")]}); result.dependencies.push({pkg, ok:true}); }
+            catch{ result.dependencies.push({pkg, ok:false}); }
+          }
+        }catch{ result.structure = {ok:false, msg:"ফলাফল পার্স করতে ব্যর্থ"}; }
+      } else {
+        result.structure = {ok:false, msg:"টাইমআউট বা কোনো আউটপুট পাওয়া যায়নি (৮ সেকেন্ডের বেশি সময় নিয়েছে)"};
+      }
+
+      // ৪. ফাইলের ভিতরের API URL বের করে লাইভ টেস্ট (সর্বোচ্চ ৫টা, ডুপ্লিকেট বাদে)
+      const urls = [...new Set((content.match(/https?:\/\/[^\s"'`)]+/g)||[]))].slice(0,5);
+      result.apis = await Promise.all(urls.map(testUrl));
+    }
+
+    res.json({ok:true, result});
+  }catch(e){ res.status(500).json({ok:false, error:e.message}); }
+});
+
 app.post("/api/file/save",auth,async(req,res)=>{
   try{
     const f=safe(BDIR,req.body.path);
@@ -554,6 +838,7 @@ app.post("/api/file/save",auth,async(req,res)=>{
     // MongoDB তে সেভ
     const relPath = path.relative(BDIR,f);
     await saveToMongo(relPath, req.body.content||"");
+    notifyBotFile("save", relPath);
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -564,6 +849,7 @@ app.post("/api/file/delete",auth,async(req,res)=>{
     const relPath = path.relative(BDIR,f);
     fs.rmSync(f,{recursive:true,force:true});
     await deleteFromMongo(relPath);
+    notifyBotFile("delete", relPath);
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -590,6 +876,8 @@ app.post("/api/file/rename",auth,async(req,res)=>{
     await deleteFromMongo(fromRel);
     if(stat.isDirectory()) await syncDirToMongo(to,toRel);
     else await saveToMongo(toRel,fs.readFileSync(to));
+    notifyBotFile("delete", fromRel);
+    if(!stat.isDirectory()) notifyBotFile("save", toRel);
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -603,6 +891,7 @@ app.post("/api/file/newfile",auth,async(req,res)=>{
     fs.writeFileSync(f,content);
     const relPath=path.relative(BDIR,f);
     await saveToMongo(relPath,content);
+    notifyBotFile("save", relPath);
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -872,18 +1161,20 @@ app.post("/api/cookie/save",auth,async(req,res)=>{
 
 // ── SETTINGS ──
 app.get("/api/settings",auth,(req,res)=>res.json({...cfg,mongoConnected:db_connected}));
+app.get("/api/alerts",auth,(req,res)=>res.json({alerts: alerts.slice().reverse()}));
+app.post("/api/alerts/clear",auth,(req,res)=>{alerts=[];saveJ(AFILE,alerts);saveAlertsToMongo();res.json({ok:true});});
 app.post("/api/settings/save",auth,(req,res)=>{
   Object.assign(cfg,req.body);
-  if(req.body.autoRestart!==undefined) autoRestart=!!req.body.autoRestart;
+  autoRestart=true; cfg.autoRestart=true; // ── সবসময় ON, সেটিংস থেকে বন্ধ করা যাবে না
   if(req.body.siteUrl) cfg.siteUrl=req.body.siteUrl.trim();
-  saveCfg();
+  saveJ(CFG,cfg);
   res.json({ok:true});
 });
 app.post("/api/settings/password",auth,(req,res)=>{
   const{current,newPass}=req.body;
   if(current!==PASS&&current!==cfg.password) return res.json({ok:false,msg:"বর্তমান পাসওয়ার্ড ভুল"});
   if(!newPass||newPass.length<4) return res.json({ok:false,msg:"কমপক্ষে ৪ অক্ষর"});
-  cfg.password=newPass;saveCfg();res.json({ok:true,msg:"পাসওয়ার্ড পরিবর্তন হয়েছে"});
+  cfg.password=newPass;saveJ(CFG,cfg);res.json({ok:true,msg:"পাসওয়ার্ড পরিবর্তন হয়েছে"});
 });
 
 // ── WS ──
@@ -960,6 +1251,7 @@ document.getElementById("pw").addEventListener("keydown",e=>e.key==="Enter"&&log
 
 function mainHTML(){
 const pname=cfg.panelName||"Bot Panel";
+const BUILD_VER="2026-07-25-v1"; // ── প্রতিবার নতুন কোড দেওয়ার সময় এই নম্বর বদলে দেওয়া হয় — "আরো" ট্যাবে দেখা যাবে, cache বাসি কিনা যাচাই করতে সাহায্য করবে
 return `<!DOCTYPE html><html lang="bn"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
@@ -973,6 +1265,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .top-logo{width:34px;height:34px;background:linear-gradient(135deg,var(--ac),#ff6584);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;box-shadow:0 0 20px rgba(108,99,255,.4);transition:box-shadow .4s}
 .top-logo svg{width:20px;height:20px;filter:drop-shadow(0 0 2px rgba(255,255,255,.4))}
 .top-logo.live{animation:logoPulse 1.8s ease-in-out infinite}
+.top-logo.starting{animation:logoPulse 0.8s ease-in-out infinite;filter:hue-rotate(60deg)}
 @keyframes logoPulse{
   0%,100%{box-shadow:0 0 20px rgba(108,99,255,.4),0 0 0 0 rgba(46,213,115,.5)}
   50%{box-shadow:0 0 28px rgba(108,99,255,.7),0 0 0 8px rgba(46,213,115,0)}
@@ -982,13 +1275,62 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .top-pill{display:flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--bd);border-radius:99px;padding:4px 10px;font-size:11px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--rd);flex-shrink:0;transition:.3s}
 .dot.on{background:var(--gr);box-shadow:0 0 8px var(--gr);animation:blink 2s infinite}
+.dot.starting{background:var(--yw);box-shadow:0 0 8px var(--yw);animation:blink 1s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .top-out{padding:6px 10px;border-radius:8px;border:1px solid rgba(240,82,82,.3);background:transparent;color:var(--rd);font-size:11px;cursor:pointer}
-.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(13,13,24,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bd);display:grid;grid-template-columns:repeat(5,1fr);height:60px;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
+
+.bell-btn{position:relative;background:transparent;border:1px solid var(--bd);border-radius:9px;padding:5px 9px;font-size:15px;cursor:pointer;color:var(--tx)}
+.bell-badge{position:absolute;top:-5px;right:-5px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px}
+
+.alert-banner{position:fixed;top:58px;left:8px;right:8px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.alert-banner-item{pointer-events:auto;background:var(--s2);border:1px solid var(--bd);border-left:4px solid var(--bl);border-radius:10px;padding:10px 12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:alertSlide .3s ease;display:flex;gap:8px;align-items:flex-start}
+.alert-banner-item.error{border-left-color:var(--rd)}
+.alert-banner-item.warn{border-left-color:var(--yw)}
+.alert-banner-item.info{border-left-color:var(--bl)}
+.alert-banner-item .ab-x{margin-left:auto;cursor:pointer;color:var(--mu);font-size:14px;flex-shrink:0}
+@keyframes alertSlide{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.alert-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600}
+.alert-overlay.show{display:block}
+.alert-drawer{position:fixed;top:0;right:-100%;width:min(420px,92vw);height:100%;background:var(--s1);z-index:601;transition:right .25s ease;box-shadow:-10px 0 40px rgba(0,0,0,.5);display:flex;flex-direction:column}
+.alert-drawer.show{right:0}
+.alert-drawer-head{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--bd)}
+.alert-list{flex:1;overflow-y:auto;padding:10px}
+.alert-item{background:var(--s2);border-left:3px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px}
+.alert-item.error{border-left-color:var(--rd)}
+.alert-item.warn{border-left-color:var(--yw)}
+.alert-item.info{border-left-color:var(--bl)}
+.alert-item-title{font-weight:700;margin-bottom:3px}
+.alert-item-time{font-size:10px;color:var(--mu);margin-top:4px}
+.alert-empty{text-align:center;color:var(--mu);padding:40px 20px;font-size:13px}
+
+.test-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700}
+.test-overlay.show{display:block}
+.test-panel{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,92vw);max-height:80vh;background:var(--s1);border:1px solid var(--bd);border-radius:16px;z-index:701;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.test-panel.show{display:flex}
+.test-head{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--bd)}
+.test-body{flex:1;overflow-y:auto;padding:14px}
+.test-sec{background:var(--s2);border-radius:10px;padding:12px;margin-bottom:10px;border-left:3px solid var(--bd)}
+.test-sec.ok{border-left-color:var(--gr)}
+.test-sec.bad{border-left-color:var(--rd)}
+.test-sec-title{font-weight:700;font-size:12.5px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.test-sec-msg{font-size:12px;color:var(--mu);word-break:break-word}
+.test-api-row{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.test-api-url{color:var(--mu);word-break:break-all;flex:1}
+.test-api-status{flex-shrink:0;font-weight:700}
+.test-api-status.ok{color:var(--gr)}
+.test-api-status.bad{color:var(--rd)}
+
+body.log-fullscreen .top,body.log-fullscreen .tabs,body.log-fullscreen .alert-banner{display:none !important}
+body.log-fullscreen .main{padding:0;margin:0;max-width:100%}
+body.log-fullscreen #pg-logs{padding:0}
+body.log-fullscreen .lbox{position:fixed;inset:0;height:100vh;border-radius:0;border:none;background:#000;font-size:13px;padding:10px 10px 50px 10px;z-index:300}
+body.log-fullscreen .log-bar{position:fixed;bottom:0;left:0;right:0;z-index:301;background:rgba(5,5,10,.97);backdrop-filter:blur(10px);padding:8px;margin:0;border-top:1px solid #1a3a1a}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(13,13,24,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bd);display:grid;grid-template-columns:repeat(7,1fr);height:60px;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
 .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border:none;background:transparent;color:var(--mu);transition:.15s;position:relative}
 .tab.active{color:var(--ac)}
-.tab .ti{font-size:22px;line-height:1}
-.tab .tl{font-size:9px;font-weight:700}
+.tab .ti{font-size:19px;line-height:1}
+.tab .tl{font-size:8px;font-weight:700}
 .tab::after{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:0;height:2px;background:var(--ac);border-radius:0 0 3px 3px;transition:.2s}
 .tab.active::after{width:40px}
 .main{padding:66px 12px 72px;min-height:100vh}
@@ -1024,6 +1366,42 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .mon-badge.warn{background:rgba(240,180,41,.15);color:var(--yw)}
 .mon-badge.err{background:rgba(240,82,82,.15);color:var(--rd)}
 .mon-badge.off{background:rgba(90,90,128,.2);color:var(--mu)}
+
+/* ── HACKING-STYLE TERMINAL VIEW ── */
+.hack-term{background:#000;border:1px solid #1a3a1a;border-radius:12px;overflow:hidden;box-shadow:0 0 30px rgba(0,255,100,.08),inset 0 0 60px rgba(0,255,100,.03)}
+.hack-topbar{background:#0a0f0a;padding:8px 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #1a3a1a}
+.hack-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.hack-dot.r{background:#ff5f56}.hack-dot.y{background:#ffbd2e}.hack-dot.g{background:#27c93f}
+.hack-title{margin-left:8px;font-family:'Courier New',monospace;font-size:11px;color:#5a8a5a}
+.hack-body{padding:16px;font-family:'Courier New',monospace;font-size:13px;line-height:2;color:#33ff66;text-shadow:0 0 6px rgba(51,255,102,.5)}
+.hack-line{white-space:normal;word-break:break-word}
+.hack-line b{color:#7fffb0;text-shadow:0 0 8px rgba(127,255,176,.7)}
+.hack-dim{color:#2a6a3a;text-shadow:none;font-size:11px}
+.hack-cmd{color:#9fffc0}
+.hack-cursor{display:inline-block;animation:hcblink 1s step-end infinite;color:#33ff66}
+@keyframes hcblink{0%,50%{opacity:1}51%,100%{opacity:0}}
+.hack-sep{border-top:1px dashed #1a3a1a;margin:10px 0}
+.hack-bar-row{margin:2px 0 12px}
+.hack-bar{height:8px;background:#0a1a0a;border:1px solid #1a3a1a;border-radius:2px;overflow:hidden}
+.hack-bar-fill{height:100%;transition:width .6s ease;box-shadow:0 0 10px currentColor}
+.hack-bar-fill.net{background:#33ffee;color:#33ffee}
+.hack-bar-fill.cpu{background:#ffd633;color:#ffd633}
+.hack-bar-fill.ram{background:#ff5566;color:#ff5566}
+.hack-blink-ok{color:#33ff66;animation:hcpulse 1.5s ease-in-out infinite}
+.hack-blink-bad{color:#ff5566 !important;text-shadow:0 0 8px rgba(255,85,102,.7) !important;animation:hcpulse 0.8s ease-in-out infinite}
+@keyframes hcpulse{0%,100%{opacity:1}50%{opacity:.5}}
+.hack-ok{color:#7fffb0;text-shadow:0 0 6px rgba(127,255,176,.6)}
+.hack-tail-info{color:#5fae7a}
+.hack-tail-success{color:#7fffb0}
+.hack-tail-error{color:#ff8080}
+.hack-tail-warn{color:#ffd633}
+.hack-glitch{position:relative;font-size:20px;font-weight:900;letter-spacing:2px;color:#33ff66;text-shadow:0 0 10px rgba(51,255,102,.7);margin-bottom:10px;animation:hglitch 3.5s infinite}
+.hack-glitch::before,.hack-glitch::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;overflow:hidden}
+.hack-glitch::before{color:#ff33aa;animation:hglitch1 2.5s infinite;clip-path:inset(0 0 60% 0)}
+.hack-glitch::after{color:#33ccff;animation:hglitch2 3s infinite;clip-path:inset(60% 0 0 0)}
+@keyframes hglitch{0%,93%,100%{transform:translate(0)}94%{transform:translate(-2px,1px)}96%{transform:translate(2px,-1px)}}
+@keyframes hglitch1{0%,93%,100%{transform:translate(0)}94%{transform:translate(2px,-1px)}96%{transform:translate(-2px,1px)}}
+@keyframes hglitch2{0%,93%,100%{transform:translate(0)}94%{transform:translate(-3px,0)}96%{transform:translate(3px,0)}}
 .btn{width:100%;padding:11px 8px;border-radius:12px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:5px}
 .btn:active{transform:scale(.96)}
 .b-start{background:linear-gradient(135deg,#3ecf8e,#22d3ee);color:#000}
@@ -1055,13 +1433,17 @@ textarea.ci:focus{border-color:var(--ac)}
 .log-bar::-webkit-scrollbar{display:none}
 .lf{padding:5px 10px;border-radius:7px;border:1px solid var(--bd);background:transparent;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;transition:.15s}
 .lf.on{background:var(--ac);color:#fff;border-color:var(--ac)}
-.lbox{background:#020209;border:1px solid var(--bd);border-radius:12px;padding:10px;height:calc(100vh - 210px);overflow-y:auto;font-family:'Courier New',monospace;font-size:11px}
+.lbox{background:#0a0a12;border:1px solid var(--bd);border-radius:12px;padding:8px;height:calc(100vh - 210px);overflow-y:auto;font-family:'Courier New',monospace;font-size:11.5px}
+.le{display:flex;gap:7px;align-items:flex-start;padding:7px 8px;margin-bottom:4px;border-radius:8px;background:var(--s1);border-left:3px solid var(--bd);transition:.15s}
+.l-ic{flex-shrink:0;font-size:12px;line-height:1.5}
+.lt{color:var(--mu);white-space:nowrap;font-size:9.5px;flex-shrink:0;padding-top:2px;opacity:.75}
+.lx{word-break:normal;overflow-wrap:anywhere;line-height:1.55}
+.li{border-left-color:#3a4a6a}.li .lx{color:#9ca3af}
+.ls{border-left-color:var(--gr);background:rgba(62,207,142,.06)}.ls .lx{color:#7fe8ba}
+.lr{border-left-color:var(--rd);background:rgba(240,82,82,.08)}.lr .lx{color:#ff9b9b}
+.lw{border-left-color:var(--yw);background:rgba(240,180,41,.07)}.lw .lx{color:#ffd980}
 .lbox::-webkit-scrollbar{width:3px}
 .lbox::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
-.le{display:flex;gap:5px;padding:2px 0;line-height:1.6}
-.lt{color:var(--mu);white-space:nowrap;font-size:10px;flex-shrink:0}
-.lx{word-break:normal;overflow-wrap:anywhere;line-height:1.55}
-.li .lx{color:#9ca3af}.ls .lx{color:var(--gr)}.lr .lx{color:var(--rd)}.lw .lx{color:var(--yw)}
 .pathbar{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--mu);margin-bottom:10px;overflow-x:auto;white-space:nowrap;display:flex;align-items:center;gap:4px}
 .pathbar::-webkit-scrollbar{display:none}
 .pp{color:var(--ac);cursor:pointer;font-weight:600}.pp:hover{text-decoration:underline}
@@ -1072,23 +1454,40 @@ textarea.ci:focus{border-color:var(--ac)}
 .tbtn.d{border-color:rgba(240,82,82,.3);color:var(--rd)}
 .sinput{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);font-size:13px;outline:none;margin-bottom:10px;transition:.2s}
 .sinput:focus{border-color:var(--ac)}
-.flist{background:var(--s2);border:1px solid var(--bd);border-radius:14px;overflow:hidden}
-.frow{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer;transition:.12s}
-.frow:last-child{border-bottom:none}
-.frow:active{background:rgba(108,99,255,.07)}
-.fi{font-size:19px;flex-shrink:0;width:24px;text-align:center}
+.flist{background:transparent;border:none;overflow:visible;display:flex;flex-direction:column;gap:7px}
+.frow{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:13px;cursor:pointer;transition:.15s;background:linear-gradient(135deg,var(--s2),var(--s1));border:1px solid var(--bd)}
+.frow:active{transform:scale(.98);border-color:var(--ac)}
+.fi{font-size:17px;flex-shrink:0;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3)}
+.fi.ft-code{background:rgba(255,123,114,.15)}
+.fi.ft-data{background:rgba(121,192,255,.15)}
+.fi.ft-media{background:rgba(210,168,255,.15)}
+.fi.ft-doc{background:rgba(126,231,135,.15)}
+.fi.ft-archive{background:rgba(240,180,41,.15)}
+.fi.ft-dir{background:rgba(108,99,255,.18)}
 .fn{flex:1;overflow:hidden}
-.fn-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-.fn-meta{font-size:10px;color:var(--mu);margin-top:2px}
+.fn-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.fn-meta{font-size:10px;color:var(--mu);margin-top:3px}
 .fa{display:flex;gap:3px;flex-shrink:0}
-.fab{padding:5px 7px;border-radius:6px;border:none;background:var(--s3);color:var(--mu);font-size:11px;cursor:pointer;transition:.12s}
+.fab{padding:6px 8px;border-radius:8px;border:none;background:var(--s3);color:var(--mu);font-size:11px;cursor:pointer;transition:.12s}
 .fab:hover{background:var(--bd);color:var(--tx)}
 .fab.del:hover{background:rgba(240,82,82,.15);color:var(--rd)}
+.fm-summary{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mu);padding:2px 4px 10px}
 .empty-fm{padding:40px;text-align:center;color:var(--mu)}
 .ed-top{background:var(--s2);border:1px solid var(--bd);border-radius:12px 12px 0 0;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ed-fn{flex:1;font-size:12px;color:var(--ac);font-weight:700;overflow:hidden;text-overflow:ellipsis}
 .ed-lang{font-size:10px;color:var(--mu);background:var(--s3);padding:2px 7px;border-radius:5px}
 #ced{width:100%;height:calc(100vh - 240px);background:#010108;border:1px solid var(--bd);border-top:none;border-radius:0 0 12px 12px;padding:14px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;resize:none;outline:none;tab-size:2}
+.ed-wrap{position:relative}
+.ed-wrap #ced.hl-on{color:transparent;caret-color:#e6edf3;background:transparent;position:relative;z-index:1}
+.ed-hl{position:absolute;top:0;left:0;width:100%;height:calc(100vh - 240px);margin:0;padding:14px;background:#010108;border:1px solid var(--bd);border-top:none;border-radius:0 0 12px 12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;overflow:hidden;pointer-events:none;z-index:0;display:none;tab-size:2}
+.ed-wrap.hl-active .ed-hl{display:block}
+.tok-kw{color:#ff7b72}
+.tok-str{color:#a5d6ff}
+.tok-num{color:#79c0ff}
+.tok-com{color:#8b949e;font-style:italic}
+.tok-fn{color:#d2a8ff}
+.tok-punc{color:#e6edf3}
+.tok-prop{color:#79c0ff}
 .upzone{border:2px dashed var(--bd);border-radius:16px;padding:40px 16px;text-align:center;cursor:pointer;background:var(--s2);transition:.3s;margin-bottom:12px}
 .upzone:active,.upzone.drag{border-color:var(--ac);background:rgba(108,99,255,.05)}
 .uz-i{font-size:48px;margin-bottom:12px;animation:bounce 2s ease-in-out infinite}
@@ -1100,6 +1499,12 @@ textarea.ci:focus{border-color:var(--ac)}
 #envEd{width:100%;height:250px;background:#010108;border:1px solid var(--bd);border-radius:10px;padding:12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;resize:vertical;outline:none;margin-bottom:10px;transition:.2s}
 #envEd:focus{border-color:var(--ac)}
 .set-card{background:var(--s2);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.owner-card{background:linear-gradient(135deg,#1a1530,#241a3d);border:1px solid #4a3a7a}
+.owner-crown{text-align:center;font-weight:800;font-size:13px;color:#e0c14a;text-shadow:0 0 10px rgba(224,193,74,.4);margin-bottom:12px;letter-spacing:.5px}
+.owner-row{display:flex;justify-content:space-between;padding:6px 2px;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.05)}
+.owner-k{color:var(--mu)}
+.owner-v{color:var(--tx);font-weight:600;text-align:right}
+.owner-sep{text-align:center;font-size:10px;color:#8a7ab8;margin:12px 0 8px;letter-spacing:1px;text-transform:uppercase}
 .set-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:12px}
 .set-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:8px}
 .set-row:last-child{border-bottom:none;padding-bottom:0}
@@ -1115,13 +1520,11 @@ textarea.ci:focus{border-color:var(--ac)}
 .modal input:focus{border-color:var(--ac)}
 .modal-btns{display:flex;gap:8px}
 .tw{position:fixed;top:62px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:999;pointer-events:none;max-width:260px}
-.toast{background:var(--s3);border-radius:10px;padding:10px 14px;font-size:12px;animation:tIn .3s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);pointer-events:auto;border-left:3px solid var(--bd);position:relative;overflow:hidden;display:flex;align-items:center;gap:8px}
+.toast{background:var(--s3);border-radius:10px;padding:10px 14px;font-size:12px;animation:tIn .3s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);pointer-events:auto;border-left:3px solid var(--bd)}
 @keyframes tIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
-.toast.success{border-left-color:var(--gr);color:var(--gr);box-shadow:0 8px 24px rgba(46,213,115,.15)}
-.toast.error{border-left-color:var(--rd);color:var(--rd);box-shadow:0 8px 24px rgba(240,82,82,.15)}
-.toast.warn{border-left-color:var(--yw);color:var(--yw);box-shadow:0 8px 24px rgba(255,193,7,.15)}
-.toast-bar{position:absolute;bottom:0;left:0;height:2px;background:currentColor;opacity:.5;animation:tShrink 4s linear forwards}
-@keyframes tShrink{from{width:100%}to{width:0%}}
+.toast.success{border-left-color:var(--gr);color:var(--gr)}
+.toast.error{border-left-color:var(--rd);color:var(--rd)}
+.toast.warn{border-left-color:var(--yw);color:var(--yw)}
 .srow{padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;margin-bottom:6px;cursor:pointer;transition:.12s}
 .srow:active{background:var(--s3)}
 .srow-p{font-size:11px;color:var(--ac);margin-bottom:2px;font-weight:600}
@@ -1136,8 +1539,24 @@ textarea.ci:focus{border-color:var(--ac)}
     <div class="top-pill"><div class="dot" id="tDot"></div><span id="tStatus">লোড...</span></div>
     <div class="top-pill" id="mongoPill"><div class="dot" id="mongoDot"></div><span id="mongoStatus">DB</span></div>
   </div>
+  <button class="bell-btn" onclick="openAlerts()">🔔<span class="bell-badge" id="bellBadge" style="display:none">0</span></button>
+  <button class="bell-btn" onclick="doReset()" title="পুরনো লগ/নোটিফিকেশন মুছে ফ্রেশ করো">🔄</button>
   <button class="top-out" onclick="location.href='/logout'">বের</button>
 </div>
+
+<div id="alertBanner" class="alert-banner"></div>
+
+<div id="alertDrawer" class="alert-drawer">
+  <div class="alert-drawer-head">
+    <div style="font-weight:800;font-size:15px">🔔 নোটিফিকেশন (লাইফটাইম)</div>
+    <div style="display:flex;gap:8px">
+      <button class="tbtn" onclick="clearAlerts()">🗑 মুছো</button>
+      <button class="tbtn" onclick="closeAlerts()">✕ বন্ধ</button>
+    </div>
+  </div>
+  <div id="alertList" class="alert-list"></div>
+</div>
+<div id="alertOverlay" class="alert-overlay" onclick="closeAlerts()"></div>
 
 <div class="main">
 
@@ -1185,7 +1604,7 @@ textarea.ci:focus{border-color:var(--ac)}
     </div>
     <div class="tog-row">
       <div><div style="font-size:13px;font-weight:600">Auto Restart</div><div style="font-size:10px;color:var(--mu);margin-top:2px">Crash হলে অটো চালু</div></div>
-      <label class="tog"><input type="checkbox" id="arTog" onchange="toggleAR(this.checked)"><div class="tog-bg"></div><div class="tog-dot"></div></label>
+      <label class="tog"><input type="checkbox" id="arTog" checked disabled title="সবসময় ON থাকে"><div class="tog-bg"></div><div class="tog-dot"></div></label>
     </div>
   </div>
 
@@ -1262,7 +1681,39 @@ textarea.ci:focus{border-color:var(--ac)}
   </div>
 </div>
 
-<!-- LOGS -->
+<!-- TERMINAL (হ্যাকিং স্টাইল, আলাদা ট্যাব) -->
+<div id="pg-term" class="page">
+  <div class="hack-term">
+    <div class="hack-topbar"><span class="hack-dot r"></span><span class="hack-dot y"></span><span class="hack-dot g"></span><span class="hack-title">root@belal-bot:~# system_monitor.sh</span></div>
+    <div class="hack-body">
+      <div class="hack-glitch" data-text="BELAL BOTX666-MAX">BELAL BOTX666-MAX</div>
+      <div class="hack-line hack-dim">[<span id="hkTime">--:--:--</span>] secure connection established ✓</div>
+      <div class="hack-line hack-dim">[BOOT] kernel modules ... <span class="hack-ok">OK</span></div>
+      <div class="hack-line hack-dim">[BOOT] mongo link ......... <span class="hack-ok">OK</span></div>
+      <div class="hack-line hack-dim">[BOOT] ipc channel ........ <span class="hack-ok">OK</span></div>
+      <div class="hack-sep"></div>
+
+      <div class="hack-line">🌐 NETWORK ⬇ <b id="hkRx">0.0</b> KB/s &nbsp; ⬆ <b id="hkTx">0.0</b> KB/s</div>
+      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill net" id="hkNetBar" style="width:0%"></div></div></div>
+
+      <div class="hack-line">🧠 CPU LOAD <b id="hkCpu">0</b>%</div>
+      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill cpu" id="hkCpuBar" style="width:0%"></div></div></div>
+
+      <div class="hack-line">💾 RAM USAGE <b id="hkRam">0</b>% <span class="hack-dim">(512MB সীমা)</span></div>
+      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill ram" id="hkRamBar" style="width:0%"></div></div></div>
+
+      <div class="hack-sep"></div>
+      <div class="hack-line">⬇️ ACTIVE DOWNLOADS: <b id="hkHeavy">0/2</b></div>
+      <div class="hack-line">🤖 BOT STATUS: <b id="hkBotStatus" class="hack-blink-ok">SCANNING...</b></div>
+      <div class="hack-line">⏱️ UPTIME: <b id="hkUptime">00:00:00</b></div>
+      <div class="hack-sep"></div>
+
+      <div class="hack-line hack-dim">$ tail -f live.log</div>
+      <div id="hkTail"></div>
+      <div class="hack-line hack-dim">> <span class="hack-cursor">▋</span></div>
+    </div>
+  </div>
+</div>
 <div id="pg-logs" class="page">
   <div class="log-bar">
     <button class="lf on" onclick="setLF('all',this)">📋 সব</button>
@@ -1272,6 +1723,7 @@ textarea.ci:focus{border-color:var(--ac)}
     <button class="lf" onclick="clearLogs()">🗑</button>
     <button class="lf" onclick="window.open('/api/bot/downloadlog')">⬇️</button>
     <button class="lf" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'↓ Auto':'↕ Man'">↓ Auto</button>
+    <button class="lf" onclick="toggleLogFullscreen()">⛶ ফুলস্ক্রিন</button>
   </div>
   <div class="lbox" id="lbox"></div>
 </div>
@@ -1283,17 +1735,31 @@ textarea.ci:focus{border-color:var(--ac)}
       <button class="tbtn" onclick="closeEd()">← ফিরে</button>
       <span class="ed-fn" id="edFn"></span>
       <span class="ed-lang" id="edLang"></span>
+      <button class="tbtn" onclick="testFile()">🧪 টেস্ট</button>
       <button class="tbtn p" onclick="saveFile()">💾 সেভ</button>
       <button class="tbtn" onclick="dlF(curEdit)">⬇️</button>
     </div>
-    <textarea id="ced" spellcheck="false"></textarea>
+    <div class="ed-wrap">
+      <pre id="cedHl" class="ed-hl" aria-hidden="true"><code></code></pre>
+      <textarea id="ced" spellcheck="false" oninput="onEdInput()" onscroll="syncEdScroll()"></textarea>
+    </div>
+  </div>
+  <div id="testOverlay" class="test-overlay" onclick="closeTest()"></div>
+  <div id="testPanel" class="test-panel">
+    <div class="test-head">
+      <div style="font-weight:800;font-size:15px">🧪 কমান্ড টেস্ট রিপোর্ট</div>
+      <button class="tbtn" onclick="closeTest()">✕ বন্ধ</button>
+    </div>
+    <div id="testBody" class="test-body"></div>
   </div>
   <div id="fmView">
     <div class="pathbar" id="pathBar">📁 root</div>
+    <div class="fm-summary" id="fmSummary"></div>
     <div class="fm-acts">
       <button class="tbtn p" onclick="showM('mkdir')">📁+</button>
       <button class="tbtn p" onclick="showM('newfile')">📄+</button>
       <button class="tbtn" onclick="loadFiles(curDir)">🔄</button>
+      <button class="tbtn" onclick="promptTest()">🧪 ফাইল টেস্ট</button>
       <button class="tbtn" onclick="editF('package.json')">📋 pkg</button>
       <button class="tbtn" onclick="editF('index.js')">📜 index</button>
       <button class="tbtn" onclick="editF('.env')">🔐 env</button>
@@ -1349,6 +1815,24 @@ textarea.ci:focus{border-color:var(--ac)}
 
 <!-- MORE -->
 <div id="pg-more" class="page">
+  <!-- OWNER INFO -->
+  <div class="set-card owner-card">
+    <div class="owner-crown">👑 MASTER BELAL NETWORK 👑</div>
+    <div class="owner-row"><span class="owner-k">👤 Name</span><span class="owner-v">BELAL YT (Verified)</span></div>
+    <div class="owner-row"><span class="owner-k">🎭 Nick</span><span class="owner-v">চাঁদের পাহাড়</span></div>
+    <div class="owner-row"><span class="owner-k">🚹 Gender</span><span class="owner-v">Male 💎</span></div>
+    <div class="owner-row"><span class="owner-k">❤️ Relation</span><span class="owner-v">Royal 💎</span></div>
+    <div class="owner-row"><span class="owner-k">🕌 Religion</span><span class="owner-v">Islam (🕋)</span></div>
+    <div class="owner-row"><span class="owner-k">🏫 Profession</span><span class="owner-v">Bot Developer / Business</span></div>
+    <div class="owner-row"><span class="owner-k">🏡 Address</span><span class="owner-v">Kurigram, BD 🇧🇩</span></div>
+    <div class="owner-sep">🔗 CONNECT ME 🔗</div>
+    <div class="owner-row"><span class="owner-k">📞 WhatsApp</span><span class="owner-v">01913246554</span></div>
+    <div class="owner-row"><span class="owner-k">🎬 TikTok</span><span class="owner-v">চাঁদের পাহাড়</span></div>
+    <div class="owner-sep">⚡ THIS PANEL ⚡</div>
+    <div class="owner-row"><span class="owner-k">🛡️ Status</span><span class="owner-v">Online & Active 💎</span></div>
+    <div class="owner-row"><span class="owner-k">🏗️ Panel Build</span><span class="owner-v" style="font-family:monospace;font-size:10px">${BUILD_VER}</span></div>
+  </div>
+
   <!-- ENV -->
   <div class="set-card">
     <div class="set-title">⚙️ Environment (.env)</div>
@@ -1378,7 +1862,7 @@ textarea.ci:focus{border-color:var(--ac)}
     <div class="set-title">🔧 Settings</div>
     <div class="set-row"><div><div class="sr-l">Panel নাম</div></div><input class="sinp" type="text" id="sName" placeholder="${pname}"></div>
     <div class="set-row"><div><div class="sr-l">Site URL</div><div class="sr-s">ঘুম বন্ধের জন্য</div></div><input class="sinp" type="text" id="sSiteUrl" placeholder="https://xxx.onrender.com"></div>
-    <div class="set-row"><div><div class="sr-l">Auto Restart</div><div class="sr-s">Crash হলে অটো</div></div><label class="tog"><input type="checkbox" id="sAR" onchange="toggleAR(this.checked)"><div class="tog-bg"></div><div class="tog-dot"></div></label></div>
+    <div class="set-row"><div><div class="sr-l">Auto Restart</div><div class="sr-s">সবসময় ON থাকে (বন্ধ করা যায় না)</div></div><label class="tog"><input type="checkbox" id="sAR" checked disabled title="সবসময় ON থাকে"><div class="tog-bg"></div><div class="tog-dot"></div></label></div>
     <div class="set-row"><div><div class="sr-l">Schedule Restart</div><div class="sr-s">প্রতিদিন নির্দিষ্ট সময়ে</div></div><label class="tog"><input type="checkbox" id="sSched"><div class="tog-bg"></div><div class="tog-dot"></div></label></div>
     <div class="set-row"><div><div class="sr-l">Restart সময়</div></div><input class="sinp" type="time" id="sTime" value="03:00"></div>
     <div style="margin-top:12px"><button class="tbtn p" onclick="saveSettings()">💾 সেভ</button></div>
@@ -1409,6 +1893,7 @@ textarea.ci:focus{border-color:var(--ac)}
 <div class="tabs">
   <button class="tab active" onclick="goTab('home',this)"><span class="ti">🏠</span><span class="tl">হোম</span></button>
   <button class="tab" onclick="goTab('monitor',this)"><span class="ti">📊</span><span class="tl">মনিটর</span></button>
+  <button class="tab" onclick="goTab('term',this)"><span class="ti">⚡</span><span class="tl">টার্মিনাল</span></button>
   <button class="tab" onclick="goTab('logs',this)"><span class="ti">📋</span><span class="tl">লগ</span></button>
   <button class="tab" onclick="goTab('files',this)"><span class="ti">📁</span><span class="tl">ফাইল</span></button>
   <button class="tab" onclick="goTab('upload',this)"><span class="ti">⬆️</span><span class="tl">আপলোড</span></button>
@@ -1424,6 +1909,24 @@ textarea.ci:focus{border-color:var(--ac)}
 <div class="tw" id="tw"></div>
 
 <script>
+// ── গ্লোবাল এরর ক্যাচার — script-এর একদম শুরুতে, যাতে যেকোনো পরবর্তী কোডে এরর হলেও সাথে সাথে স্ক্রিনে দেখা যায় ──
+// (কোনো bare dependency নেই অন্য ফাংশনের উপর, যাতে সবার আগে এবং সবসময় নির্ভরযোগ্যভাবে কাজ করে)
+function _escSafe(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function showGlobalError(msg){
+  try{
+    let diag=document.getElementById("diagBox");
+    if(!diag){
+      diag=document.createElement("div");
+      diag.id="diagBox";
+      diag.style.cssText="position:fixed;bottom:70px;left:8px;right:8px;background:#2a0a0a;border:2px solid #ff4444;border-radius:10px;padding:12px;z-index:9999;font-family:monospace;font-size:11px;color:#ffaaaa;max-height:200px;overflow-y:auto;pointer-events:auto";
+      (document.body||document.documentElement).appendChild(diag);
+    }
+    diag.innerHTML="🔴 GLOBAL ERROR ("+new Date().toLocaleTimeString()+")<br>"+_escSafe(msg).replace(/\n/g,"<br>")+"<hr>"+diag.innerHTML;
+  }catch(e){ /* ডায়াগনস্টিক নিজেই যেন কখনো ক্র্যাশ না করে */ }
+}
+window.addEventListener("error", function(e){ showGlobalError((e.message||"unknown")+" @ "+(e.filename||"")+":"+(e.lineno||"")); });
+window.addEventListener("unhandledrejection", function(e){ showGlobalError("Unhandled Promise: "+(e.reason&&e.reason.message?e.reason.message:String(e.reason))); });
+
 let curDir="",curEdit="",renameFrom="",copyFrom="",logFilter="all",autoScroll=true;
 let ws,_botUpSec=0,_botRunning=false;
 
@@ -1433,11 +1936,13 @@ function goTab(id,btn){
   btn.classList.add("active");
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.getElementById("pg-"+id).classList.add("active");
+  if(id!=="term"){ clearInterval(_hackTimer); }
   if(id==="files") loadFiles(curDir);
   if(id==="more"){loadEnv();loadSettings();}
   if(id==="logs") document.getElementById("lbox").scrollTop=document.getElementById("lbox").scrollHeight;
   if(id==="upload"){document.getElementById("uploadDir").textContent=curDir||"root";}
   if(id==="monitor") loadMonitor();
+  if(id==="term"){ loadTerminal(); _hackTimer=setInterval(loadTerminal,1500); }
 }
 
 // WS
@@ -1448,36 +1953,104 @@ function connectWS(){
     const m=JSON.parse(e.data);
     if(m.type==="log") appendLog(m.data);
     if(m.type==="logs"){document.getElementById("lbox").innerHTML="";m.data.forEach(appendLog);}
-    if(m.type==="status") updateStatus(m.running);
+    if(m.type==="status") updateStatus(m.running,m.starting);
     if(m.type==="clearLogs") document.getElementById("lbox").innerHTML="";
+    if(m.type==="alert"){ showAlertBanner(m.data); _alertsCache.unshift(m.data); _unreadAlerts++; updateBellBadge(); if(document.getElementById("alertDrawer").classList.contains("show")) renderAlertList(); }
     if(m.type==="mongo") updateMongo(m.connected);
   };
   ws.onclose=()=>setTimeout(connectWS,3000);
 }
+
+// ── ইন-প্যানেল অ্যালার্ট সিস্টেম ──
+let _alertsCache=[], _unreadAlerts=0;
+const _lvlIcon={info:"ℹ️",warn:"⚠️",error:"🔴"};
+function showAlertBanner(a){
+  const box=document.getElementById("alertBanner");
+  const d=document.createElement("div");
+  d.className="alert-banner-item "+(a.level||"info");
+  d.innerHTML='<span>'+(_lvlIcon[a.level]||"ℹ️")+'</span><div><b>'+esc(a.title)+'</b><div style="color:var(--mu);margin-top:2px">'+esc(a.message)+'</div></div><span class="ab-x" onclick="this.parentElement.remove()">✕</span>';
+  box.appendChild(d);
+  setTimeout(()=>{ if(d.parentElement) d.remove(); }, 8000);
+}
+function updateBellBadge(){
+  const b=document.getElementById("bellBadge");
+  if(_unreadAlerts>0){ b.style.display="flex"; b.textContent=_unreadAlerts>99?"99+":_unreadAlerts; }
+  else b.style.display="none";
+}
+function renderAlertList(){
+  const list=document.getElementById("alertList");
+  if(!_alertsCache.length){ list.innerHTML='<div class="alert-empty">🔕 কোনো নোটিফিকেশন নেই</div>'; return; }
+  list.innerHTML=_alertsCache.map(a=>
+    '<div class="alert-item '+(a.level||"info")+'"><div class="alert-item-title">'+(_lvlIcon[a.level]||"ℹ️")+' '+esc(a.title)+'</div><div>'+esc(a.message)+'</div><div class="alert-item-time">'+new Date(a.time).toLocaleString("bn-BD")+'</div></div>'
+  ).join("");
+}
+async function openAlerts(){
+  document.getElementById("alertDrawer").classList.add("show");
+  document.getElementById("alertOverlay").classList.add("show");
+  _unreadAlerts=0; updateBellBadge();
+  try{
+    const d=await fetch("/api/alerts").then(r=>r.json());
+    _alertsCache=d.alerts||[];
+  }catch{}
+  renderAlertList();
+}
+function closeAlerts(){
+  document.getElementById("alertDrawer").classList.remove("show");
+  document.getElementById("alertOverlay").classList.remove("show");
+}
+async function clearAlerts(){
+  if(!confirm("সব নোটিফিকেশন মুছবে?")) return;
+  await fetch("/api/alerts/clear",{method:"POST"});
+  _alertsCache=[]; renderAlertList();
+}
+(async function initAlerts(){
+  try{
+    const d=await fetch("/api/alerts").then(r=>r.json());
+    _alertsCache=d.alerts||[];
+  }catch{}
+})();
 
 function appendLog(e){
   if(logFilter!=="all"&&e.type!==logFilter)return;
   const box=document.getElementById("lbox");
   const d=document.createElement("div");
   const cls={info:"li",success:"ls",error:"lr",warn:"lw"}[e.type||"info"]||"li";
+  const icon={info:"ℹ️",success:"✅",error:"❌",warn:"⚠️"}[e.type||"info"]||"ℹ️";
   d.className="le "+cls;d.dataset.t=e.type||"info";
-  d.innerHTML='<span class="lt">'+e.time+'</span><span class="lx">'+esc(e.text)+'</span>';
+  d.innerHTML='<span class="l-ic">'+icon+'</span><span class="lt">'+e.time+'</span><span class="lx">'+esc(e.text)+'</span>';
   box.appendChild(d);
   if(autoScroll) box.scrollTop=box.scrollHeight;
 }
 
 function esc(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 function setLF(f,btn){logFilter=f;document.querySelectorAll(".lf").forEach(b=>b.classList.remove("on"));btn.classList.add("on");document.querySelectorAll(".le").forEach(el=>el.style.display=(f==="all"||el.dataset.t===f)?"flex":"none");}
+function toggleLogFullscreen(){
+  document.body.classList.toggle("log-fullscreen");
+  const box=document.getElementById("lbox");
+  if(autoScroll) box.scrollTop=box.scrollHeight;
+}
 function clearLogs(){fetch("/api/bot/clearlogs",{method:"POST"});}
+async function doReset(){
+  if(!confirm("পুরনো সব লগ আর নোটিফিকেশন মুছে একদম ফ্রেশ শুরু করবে?")) return;
+  await fetch("/api/bot/clearlogs",{method:"POST"});
+  await fetch("/api/alerts/clear",{method:"POST"});
+  document.getElementById("lbox").innerHTML="";
+  document.getElementById("alertBanner").innerHTML="";
+  _alertsCache=[]; _unreadAlerts=0; updateBellBadge(); renderAlertList();
+  toast("🔄 রিসেট হয়ে গেছে — ফ্রেশ শুরু","success");
+}
 function clearLogFile(){if(!confirm("Log file মুছবেন?"))return;fetch("/api/bot/clearlogfile",{method:"POST"}).then(r=>r.json()).then(d=>toast(d.ok?"✅ মুছা হয়েছে":"❌ ব্যর্থ",d.ok?"success":"error"));}
 
-function updateStatus(running){
+function updateStatus(running,starting){
   _botRunning=running;
   if(!running) _botUpSec=0;
-  [document.getElementById("sDot"),document.getElementById("tDot")].forEach(d=>{if(d)d.className="dot"+(running?" on":"");});
-  const tLogo=document.getElementById("topLogo");if(tLogo)tLogo.className="top-logo"+(running?" live":"");
-  const st=document.getElementById("sTxt");if(st)st.textContent=running?"✅ বট চলছে":"🔴 বট বন্ধ";
-  const ts=document.getElementById("tStatus");if(ts)ts.textContent=running?"✅ চলছে":"🔴 বন্ধ";
+  const state = running?"ready":(starting?"starting":"stopped");
+  [document.getElementById("sDot"),document.getElementById("tDot")].forEach(d=>{if(d)d.className="dot"+(running?" on":(starting?" starting":""));});
+  const tLogo=document.getElementById("topLogo");if(tLogo)tLogo.className="top-logo"+(running?" live":(starting?" starting":""));
+  const texts={ready:"✅ বট চলছে",starting:"🟡 বট চালু হচ্ছে...",stopped:"🔴 বট বন্ধ"};
+  const textsShort={ready:"✅ চলছে",starting:"🟡 চালু হচ্ছে",stopped:"🔴 বন্ধ"};
+  const st=document.getElementById("sTxt");if(st)st.textContent=texts[state];
+  const ts=document.getElementById("tStatus");if(ts)ts.textContent=textsShort[state];
 }
 
 function updateMongo(connected){
@@ -1524,7 +2097,15 @@ setInterval(()=>{if(!_botRunning)return;_botUpSec++;const el=document.getElement
 
 async function refresh(){
   try{
-    const[st,bs]=await Promise.all([fetch("/api/stats").then(r=>r.json()),fetch("/api/bot/status").then(r=>r.json())]);
+    const ac=new AbortController();
+    const toId=setTimeout(()=>ac.abort(),8000); // ৮ সেকেন্ডে সাড়া না পেলে থেমে যাওয়ার বদলে টাইমআউট ধরে নেওয়া হবে
+    const [rSt, rBs] = await Promise.all([
+      fetch("/api/stats",{signal:ac.signal}),
+      fetch("/api/bot/status",{signal:ac.signal})
+    ]);
+    clearTimeout(toId);
+    if(rSt.status===401 || rBs.status===401){ location.href="/login"; return; }
+    const st = await rSt.json(), bs = await rBs.json();
     document.getElementById("cMem").textContent=st.memMB||"--";
     document.getElementById("cSup").textContent=fmtT(st.serverUptime||0);
     document.getElementById("cFiles").textContent=st.botFiles||0;
@@ -1532,7 +2113,7 @@ async function refresh(){
     const cc=document.getElementById("cCrash");if(cc)cc.textContent=st.crashes||0;
     const ct=document.getElementById("cTup");if(ct)ct.textContent=fmtT((st.totalUptime||0)+(bs.uptime||0));
     const cn=document.getElementById("cNode");if(cn)cn.textContent=(st.node||"").replace("v","");
-    updateStatus(bs.running);
+    updateStatus(!!bs.ready, bs.running && !bs.ready);
     updateMongo(st.mongoConnected||false);
     fetch("/api/cookie/status").then(r=>r.json()).then(cs=>{
       const el=document.getElementById("cookieStatus");if(!el)return;
@@ -1546,11 +2127,50 @@ async function refresh(){
     if(hl)hl.innerHTML=hist.length?hist.map(h=>'<div class="hi"><span class="hi-date">'+new Date(h.date).toLocaleString("bn-BD").substring(0,16)+'</span><span class="hi-up">'+fmtT(h.uptime)+'</span><span class="hi-code">'+h.code+'</span></div>').join(""):'<div style="font-size:12px;color:var(--mu);text-align:center;padding:10px">ইতিহাস নেই</div>';
     const pgMon=document.getElementById("pg-monitor");
     if(pgMon&&pgMon.classList.contains("active")) loadMonitor();
-  }catch{}
+    _refreshFails=0;
+  }catch(e){
+    _refreshFails++;
+    const st=document.getElementById("sTxt"); if(st) st.textContent="⚠️ এরর: "+(e&&e.message?e.message:String(e)).slice(0,60);
+    const ts=document.getElementById("tStatus"); if(ts) ts.textContent="⚠️ এরর দেখো নিচে";
+    console.error("[refresh error]", e);
+    showGlobalError("refresh() failed: "+((e&&e.stack)?e.stack:String(e)));
+  }
 }
+let _refreshFails=0;
 
 // LIVE MONITOR
 function _mColor(pct){ return pct<60?"var(--gr)":pct<85?"var(--yw)":"var(--rd)"; }
+let _hackTimer=null, _hackTailShown=new Set();
+async function loadTerminal(){
+  try{
+    const d=await fetch("/api/system/terminal").then(r=>r.json());
+    const now=new Date();
+    document.getElementById("hkTime").textContent=now.toLocaleTimeString("en-GB");
+    if(d.net){
+      document.getElementById("hkRx").textContent=(d.net.rxKBs||0).toFixed(1);
+      document.getElementById("hkTx").textContent=(d.net.txKBs||0).toFixed(1);
+      const netPct=Math.min(100,Math.round(((d.net.rxKBs||0)+(d.net.txKBs||0))/2)); // মোটামুটি ভিজ্যুয়াল স্কেল, ২০০KB/s ধরে
+      document.getElementById("hkNetBar").style.width=netPct+"%";
+    }
+    document.getElementById("hkCpu").textContent=d.cpuPercent||0;
+    document.getElementById("hkCpuBar").style.width=(d.cpuPercent||0)+"%";
+    document.getElementById("hkRam").textContent=d.ramPercent||0;
+    document.getElementById("hkRamBar").style.width=(d.ramPercent||0)+"%";
+    const hv=document.getElementById("hkHeavy");
+    if(hv) hv.textContent=d.heavy?(d.heavy.active+"/"+d.heavy.max):"0/2";
+    if(d.uptimeSec!=null){ document.getElementById("hkUptime").textContent=fmtT(d.uptimeSec); }
+    const bs=document.getElementById("hkBotStatus");
+    if(bs){
+      if(d.botReady){ bs.textContent="ONLINE ✓"; bs.className="hack-blink-ok"; }
+      else if(d.botRunning){ bs.textContent="BOOTING..."; bs.className="hack-blink-ok"; }
+      else { bs.textContent="OFFLINE ✕"; bs.className="hack-blink-bad"; }
+    }
+    const tailBox=document.getElementById("hkTail");
+    if(tailBox && d.tail){
+      tailBox.innerHTML = d.tail.map(l=>'<div class="hack-line hack-tail-'+(l.type||"info")+'">['+l.time+'] '+esc(l.text)+'</div>').join("");
+    }
+  }catch(e){}
+}
 async function loadMonitor(){
   try{
     const d=await fetch("/api/system/live").then(r=>r.json());
@@ -1649,6 +2269,15 @@ function ficon(name,isDir){
   const e=name.split(".").pop().toLowerCase();
   return{js:"📜",mjs:"📜",cjs:"📜",json:"📋",md:"📝",txt:"📄",env:"🔐",log:"📋",jpg:"🖼",jpeg:"🖼",png:"🖼",gif:"🖼",webp:"🖼",mp3:"🎵",mp4:"🎬",zip:"📦",tar:"📦",gz:"📦",html:"🌐",css:"🎨",ts:"📘",py:"🐍",sh:"⚡",bat:"⚡",yml:"⚙️",yaml:"⚙️",xml:"📋",lock:"🔒",gitignore:"👁️",npmrc:"⚙️",babelrc:"⚙️"}[e]||"📄";
 }
+function ftype(name,isDir){
+  if(isDir)return"ft-dir";
+  const e=name.split(".").pop().toLowerCase();
+  if(["js","mjs","cjs","ts","py","sh","bat"].includes(e))return"ft-code";
+  if(["json","yml","yaml","xml","env","lock"].includes(e))return"ft-data";
+  if(["jpg","jpeg","png","gif","webp","mp3","mp4"].includes(e))return"ft-media";
+  if(["zip","tar","gz"].includes(e))return"ft-archive";
+  return"ft-doc";
+}
 function langExt(n){const e=n.split(".").pop().toLowerCase();return{js:"JavaScript",json:"JSON",md:"Markdown",html:"HTML",css:"CSS",py:"Python",ts:"TypeScript",sh:"Shell",env:"ENV",txt:"Text",yml:"YAML",xml:"XML"}[e]||e.toUpperCase();}
 
 function buildPath(dir){
@@ -1668,6 +2297,8 @@ async function loadFiles(dir){
   document.getElementById("fq").value="";
   document.getElementById("uploadDir").textContent=curDir||"root";
   const data=await fetch("/api/files?path="+encodeURIComponent(curDir)).then(r=>r.json());
+  const nFiles=(data.items||[]).filter(i=>!i.isDir).length, nDirs=(data.items||[]).filter(i=>i.isDir).length;
+  document.getElementById("fmSummary").textContent="📁 "+nDirs+" ফোল্ডার · 📄 "+nFiles+" ফাইল";
   const list=document.getElementById("flist");list.innerHTML="";
   if(curDir){
     const up=document.createElement("div");up.className="frow";
@@ -1675,14 +2306,15 @@ async function loadFiles(dir){
     up.onclick=()=>loadFiles(curDir.split("/").slice(0,-1).join("/"));
     list.appendChild(up);
   }
-  if(!data.items?.length){list.innerHTML='<div class="empty-fm"><div style="font-size:40px;margin-bottom:8px">📭</div><div>ফোল্ডার খালি</div></div>';return;}
+  if(!(data.items && data.items.length)){list.innerHTML='<div class="empty-fm"><div style="font-size:40px;margin-bottom:8px">📭</div><div>ফোল্ডার খালি</div></div>';return;}
   data.items.forEach(item=>{
     const fp=curDir?curDir+"/"+item.name:item.name;
     const row=document.createElement("div");row.className="frow";
-    row.innerHTML='<span class="fi">'+ficon(item.name,item.isDir)+'</span>'
+    row.innerHTML='<span class="fi '+ftype(item.name,item.isDir)+'">'+ficon(item.name,item.isDir)+'</span>'
       +'<div class="fn"><div class="fn-name">'+item.name+'</div><div class="fn-meta">'+fsz(item.size)+(item.mtime?' · <span data-mtime="'+item.mtime+'">'+fdt(item.mtime)+'</span>':"")+'</div></div>'
       +'<div class="fa">'
       +(item.isDir?'':'<button class="fab" onclick="event.stopPropagation();editF(\\''+fp+'\\')">✏️</button>')
+      +(!item.isDir && /\.js$/i.test(item.name)?'<button class="fab" onclick="event.stopPropagation();quickTest(\\''+fp+'\\')">🧪</button>':'')
       +'<button class="fab" onclick="event.stopPropagation();dlF(\\''+fp+'\\')">⬇️</button>'
       +'<button class="fab" onclick="event.stopPropagation();showRename(\\''+fp+'\\',\\''+item.name+'\\')">🔤</button>'
       +'<button class="fab" onclick="event.stopPropagation();showCopy(\\''+fp+'\\')">📋</button>'
@@ -1703,8 +2335,84 @@ async function editF(p){
   document.getElementById("ced").value=d.content;
   document.getElementById("fmView").style.display="none";
   document.getElementById("edView").style.display="block";
+  const isHl = /\.(js|json|mjs|cjs)$/i.test(p);
+  document.querySelector(".ed-wrap").classList.toggle("hl-active", isHl);
+  document.getElementById("ced").classList.toggle("hl-on", isHl);
+  if(isHl) renderHighlight();
+}
+function onEdInput(){ if(document.querySelector(".ed-wrap").classList.contains("hl-active")) renderHighlight(); }
+function syncEdScroll(){
+  const hl=document.getElementById("cedHl"), ta=document.getElementById("ced");
+  hl.scrollTop=ta.scrollTop; hl.scrollLeft=ta.scrollLeft;
+}
+function renderHighlight(){
+  const code=document.getElementById("ced").value;
+  document.querySelector("#cedHl code").innerHTML=highlightJS(code);
+  syncEdScroll();
+}
+function highlightJS(src){
+  let s=esc(src);
+  // কমেন্ট আর স্ট্রিং আগে টোকেনাইজ করা হচ্ছে যাতে ওগুলোর ভিতরের কিওয়ার্ড রঙিন না হয়ে যায়
+  const tokens=[];
+  s=s.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>{tokens.push('<span class="tok-com">'+m+'</span>');return "\u0000"+(tokens.length-1)+"\u0000";});
+  s=s.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|'(?:[^'\\]|\\.)*')/g,m=>{tokens.push('<span class="tok-str">'+m+'</span>');return "\u0000"+(tokens.length-1)+"\u0000";});
+  s=s.replace(/\b(const|let|var|function|async|await|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|class|extends|super|this|typeof|instanceof|in|of|null|undefined|true|false|import|export|default|require|module|exports|delete|void|yield|static|get|set)\b/g,'<span class="tok-kw">$1</span>');
+  s=s.replace(/\b(\d+\.?\d*)\b/g,'<span class="tok-num">$1</span>');
+  s=s.replace(/\b([a-zA-Z_$][\w$]*)(?=\s*\()/g,'<span class="tok-fn">$1</span>');
+  s=s.replace(/\u0000(\d+)\u0000/g,(_,i)=>tokens[+i]);
+  return s;
 }
 function closeEd(){document.getElementById("edView").style.display="none";document.getElementById("fmView").style.display="block";}
+async function testFile(pathOverride){
+  const target = pathOverride || curEdit;
+  if(!target) return;
+  document.getElementById("testOverlay").classList.add("show");
+  document.getElementById("testPanel").classList.add("show");
+  document.getElementById("testBody").innerHTML='<div style="text-align:center;padding:30px;color:var(--mu)">⏳ টেস্ট চলছে...</div>';
+  try{
+    const d=await fetch("/api/file/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:target})}).then(r=>r.json());
+    if(!d.ok){ document.getElementById("testBody").innerHTML='<div class="test-sec bad"><div class="test-sec-title">❌ ব্যর্থ</div><div class="test-sec-msg">'+esc(d.msg||d.error||"অজানা এরর")+'</div></div>'; return; }
+    renderTestResult(d.result);
+  }catch(e){ document.getElementById("testBody").innerHTML='<div class="test-sec bad"><div class="test-sec-title">❌ নেটওয়ার্ক এরর</div></div>'; }
+}
+function quickTest(fp){ testFile(fp); }
+function promptTest(){
+  const p=prompt("কোন ফাইল টেস্ট করতে চাও? (যেমন: Script/commands/video.js)", curDir?curDir+"/":"");
+  if(p&&p.trim()) testFile(p.trim());
+}
+function closeTest(){
+  document.getElementById("testOverlay").classList.remove("show");
+  document.getElementById("testPanel").classList.remove("show");
+}
+function renderTestResult(r){
+  let html="";
+  const structOk = !r.structure || r.structure.ok;
+  const depsOk = !r.dependencies || r.dependencies.every(d=>d.ok);
+  const apisOk = !r.apis || r.apis.every(a=>a.ok);
+  const allGood = r.syntax.ok && structOk && depsOk && apisOk;
+  html += allGood
+    ? '<div class="test-sec ok" style="text-align:center;font-size:14px;font-weight:800">✅ এই ফাইল সম্পূর্ণ ঠিক আছে — নিশ্চিন্তে ব্যবহার করতে পারো</div>'
+    : '<div class="test-sec bad" style="text-align:center;font-size:14px;font-weight:800">⚠️ এই ফাইলে সমস্যা আছে — নিচে বিস্তারিত দেখো</div>';
+  html+='<div class="test-sec '+(r.syntax.ok?"ok":"bad")+'"><div class="test-sec-title">'+(r.syntax.ok?"✅":"❌")+' সিনট্যাক্স</div><div class="test-sec-msg">'+esc(r.syntax.msg)+'</div></div>';
+  if(r.structure){
+    html+='<div class="test-sec '+(r.structure.ok?"ok":"bad")+'"><div class="test-sec-title">'+(r.structure.ok?"✅":"❌")+' কমান্ড স্ট্রাকচার</div><div class="test-sec-msg">'+esc(r.structure.msg)+'</div></div>';
+  }
+  if(r.dependencies && r.dependencies.length){
+    const allOk=r.dependencies.every(d=>d.ok);
+    html+='<div class="test-sec '+(allOk?"ok":"bad")+'"><div class="test-sec-title">'+(allOk?"✅":"⚠️")+' Dependencies</div>';
+    r.dependencies.forEach(d=>{ html+='<div class="test-api-row"><span class="test-api-url">'+esc(d.pkg)+'</span><span class="test-api-status '+(d.ok?"ok":"bad")+'">'+(d.ok?"✅ আছে":"❌ নেই")+'</span></div>'; });
+    html+='</div>';
+  }
+  if(r.apis && r.apis.length){
+    const allOk=r.apis.every(a=>a.ok);
+    html+='<div class="test-sec '+(allOk?"ok":"bad")+'"><div class="test-sec-title">'+(allOk?"✅":"⚠️")+' API লিংক (লাইভ চেক)</div>';
+    r.apis.forEach(a=>{ html+='<div class="test-api-row"><span class="test-api-url">'+esc(a.url)+'</span><span class="test-api-status '+(a.ok?"ok":"bad")+'">'+esc(String(a.status))+'</span></div>'; });
+    html+='</div>';
+  } else if(r.syntax.ok){
+    html+='<div class="test-sec-msg" style="text-align:center;padding:8px">ℹ️ ফাইলে কোনো http/https লিংক পাওয়া যায়নি</div>';
+  }
+  document.getElementById("testBody").innerHTML=html;
+}
 async function saveFile(){
   const d=await fetch("/api/file/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:curEdit,content:document.getElementById("ced").value})}).then(r=>r.json());
   toast(d.ok?"✅ সেভ + MongoDB আপডেট":"❌ "+d.error,d.ok?"success":"error");
@@ -1718,7 +2426,7 @@ async function delItem(p,name){
 
 // MODALS
 document.querySelectorAll(".mbg").forEach(bg=>bg.addEventListener("click",e=>{if(e.target===bg)bg.classList.remove("open");}));
-function showM(id){document.getElementById("mod-"+id).classList.add("open");setTimeout(()=>document.querySelector("#mod-"+id+" input")?.focus(),100);}
+function showM(id){document.getElementById("mod-"+id).classList.add("open");setTimeout(()=>{var _f=document.querySelector("#mod-"+id+" input");if(_f)_f.focus();},100);}
 function closeM(id){document.getElementById("mod-"+id).classList.remove("open");}
 
 async function doMkdir(){
@@ -1759,7 +2467,7 @@ function doFS(){
   if(!q){res.style.display="none";return;}
   clearTimeout(fst);fst=setTimeout(async()=>{
     const d=await fetch("/api/file/search?q="+encodeURIComponent(q)).then(r=>r.json());
-    if(!d.results?.length){res.style.display="block";res.innerHTML='<div style="font-size:12px;color:var(--mu);padding:10px;text-align:center">📭 পাওয়া যায়নি</div>';return;}
+    if(!(d.results && d.results.length)){res.style.display="block";res.innerHTML='<div style="font-size:12px;color:var(--mu);padding:10px;text-align:center">📭 পাওয়া যায়নি</div>';return;}
     res.style.display="block";
     res.innerHTML=d.results.map(r=>'<div class="srow" onclick="'+(r.isDir?"loadFiles('"+r.path+"')":"editF('"+r.path+"')")+'"><div class="srow-p">'+ficon(r.name,r.isDir)+" "+r.path+'</div><div class="srow-m">'+fsz(r.size)+'</div></div>').join("");
   },300);
@@ -1907,14 +2615,10 @@ async function changePw(){
   toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");
   if(d.ok){document.getElementById("sCur").value="";document.getElementById("sNew").value="";}
 }
-
 // TOAST
 function toast(msg,type="success"){
   const w=document.getElementById("tw"),el=document.createElement("div");
-  const icons={success:"✅",error:"❌",warn:"⚠️"};
-  el.className="toast "+type;
-  el.innerHTML='<span>'+(icons[type]||"ℹ️")+'</span><span>'+msg+'</span><div class="toast-bar"></div>';
-  w.appendChild(el);
+  el.className="toast "+type;el.textContent=msg;w.appendChild(el);
   setTimeout(()=>{el.style.opacity="0";el.style.transition=".3s";setTimeout(()=>el.remove(),300);},4000);
 }
 
