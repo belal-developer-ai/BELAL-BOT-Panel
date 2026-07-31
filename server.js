@@ -1178,6 +1178,1670 @@ app.post("/api/settings/password",auth,(req,res)=>{
 });
 
 // ── WS ──
+
+// ════════════════ LOGIN HTML ════════════════
+function loginHTML(){return `<!DOCTYPE html>
+<html lang="bn"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#050510">
+<title>Bot Panel — লগইন</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#050510;--ac:#7c6eff;--pk:#ff6b9d;--gn:#00f5a0;
+  --tx:#e8eaf6;--mu:#6b6b9a;--bd:rgba(255,255,255,.07);
+  --glass:rgba(255,255,255,.04);--blur:blur(40px);
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
+
+/* Ambient orbs */
+.orbs{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.15;animation:drift 12s ease-in-out infinite}
+.orb1{width:600px;height:600px;background:radial-gradient(circle,#7c6eff,transparent);top:-200px;left:-200px}
+.orb2{width:500px;height:500px;background:radial-gradient(circle,#ff6b9d,transparent);bottom:-150px;right:-150px;animation-delay:6s}
+.orb3{width:300px;height:300px;background:radial-gradient(circle,#00f5a0,transparent);top:40%;left:50%;animation-delay:3s}
+@keyframes drift{0%,100%{transform:scale(1) translate(0,0)}50%{transform:scale(1.15) translate(20px,-20px)}}
+
+/* Grid lines */
+.grid{position:fixed;inset:0;background-image:linear-gradient(rgba(124,110,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(124,110,255,.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none}
+
+.card{
+  position:relative;z-index:2;
+  background:var(--glass);backdrop-filter:var(--blur);
+  border:1px solid var(--bd);
+  border-radius:28px;padding:48px 36px;width:90%;max-width:400px;
+  box-shadow:0 40px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08);
+  animation:cardIn .6s cubic-bezier(.16,1,.3,1);
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(40px) scale(.96)}to{opacity:1;transform:none}}
+
+.logo-ring{
+  width:88px;height:88px;margin:0 auto 24px;position:relative;
+  display:flex;align-items:center;justify-content:center;
+}
+.logo-ring::before{
+  content:"";position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,#7c6eff,#ff6b9d,#00f5a0,#7c6eff);
+  animation:spin 4s linear infinite;
+  padding:2px;
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.logo-inner{
+  width:76px;height:76px;border-radius:50%;
+  background:linear-gradient(135deg,#1a1540,#0d0d1f);
+  display:flex;align-items:center;justify-content:center;
+  font-size:32px;position:relative;z-index:1;
+  box-shadow:0 0 40px rgba(124,110,255,.3);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+h1{text-align:center;font-size:22px;font-weight:900;color:#fff;margin-bottom:6px;letter-spacing:-.3px}
+.sub{text-align:center;color:var(--mu);font-size:13px;margin-bottom:32px}
+
+.field{position:relative;margin-bottom:14px}
+.field input{
+  width:100%;padding:14px 46px 14px 16px;
+  border-radius:14px;border:1px solid var(--bd);
+  background:rgba(255,255,255,.05);
+  color:var(--tx);font-size:15px;outline:none;transition:.25s;
+}
+.field input:focus{border-color:var(--ac);background:rgba(124,110,255,.07);box-shadow:0 0 0 3px rgba(124,110,255,.12)}
+.field .eye{position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;opacity:.5;transition:.2s;border:none;background:transparent;color:var(--tx);padding:4px}
+.field .eye:hover{opacity:1}
+
+.err-box{
+  background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.25);
+  color:#ff9b9b;border-radius:10px;padding:10px 14px;font-size:12.5px;
+  margin-bottom:14px;display:none;animation:shake .3s ease
+}
+.err-box.show{display:block}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+.btn-login{
+  width:100%;padding:15px;border-radius:14px;border:none;
+  background:linear-gradient(135deg,var(--ac),var(--pk));
+  color:#fff;font-size:15px;font-weight:800;cursor:pointer;
+  transition:.2s;position:relative;overflow:hidden;letter-spacing:.3px;
+}
+.btn-login::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,0);transition:.2s}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(124,110,255,.4)}
+.btn-login:hover::after{background:rgba(255,255,255,.07)}
+.btn-login:active{transform:scale(.97)}
+.btn-login.loading{pointer-events:none}
+.btn-login.loading::before{content:"";position:absolute;left:0;top:0;bottom:0;width:40%;background:rgba(255,255,255,.15);animation:shimmer 1s infinite}
+@keyframes shimmer{from{transform:skewX(-20deg) translateX(-150%)}to{transform:skewX(-20deg) translateX(400%)}}
+
+.ver{text-align:center;font-size:10px;color:var(--mu);margin-top:20px;opacity:.5}
+</style>
+</head><body>
+<div class="orbs"><div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div></div>
+<div class="grid"></div>
+<div class="card">
+  <div class="logo-ring"><div class="logo-inner">🤖</div></div>
+  <h1>${cfg.panelName||'Bot Panel'}</h1>
+  <p class="sub">আপনার বট কন্ট্রোল সেন্টার</p>
+  <div class="err-box" id="err"></div>
+  <div class="field">
+    <input type="password" id="pw" placeholder="পাসওয়ার্ড লিখুন" autofocus>
+    <button class="eye" id="eyeBtn" type="button" onclick="toggleEye()">👁</button>
+  </div>
+  <button class="btn-login" id="loginBtn" onclick="login()">প্রবেশ করুন →</button>
+  <p class="ver">v2.0 — Render Free Optimized</p>
+</div>
+<script>
+function toggleEye(){const i=document.getElementById('pw');i.type=i.type==='password'?'text':'password';}
+async function login(){
+  const btn=document.getElementById('loginBtn');
+  btn.classList.add('loading');btn.textContent='যাচাই হচ্ছে...';
+  const pw=document.getElementById('pw').value;
+  try{
+    const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'password='+encodeURIComponent(pw)});
+    const d=await r.json();
+    if(d.ok){btn.textContent='✅ সফল!';setTimeout(()=>location.href='/',300);}
+    else{
+      const e=document.getElementById('err');e.textContent=d.msg||'❌ ভুল পাসওয়ার্ড';e.classList.add('show');
+      btn.classList.remove('loading');btn.textContent='প্রবেশ করুন →';
+      setTimeout(()=>e.classList.remove('show'),4000);
+    }
+  }catch(e){btn.classList.remove('loading');btn.textContent='প্রবেশ করুন →';}
+}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+</script>
+</body></html>`;
+}
+
+// ════════════════ MAIN HTML v2 ════════════════
+function mainHTML(){
+const pname=cfg.panelName||'Bot Panel';
+const BUILD_VER='v2.0-2026';
+return `<!DOCTYPE html>
+<html lang="bn"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#050510">
+<title>${pname}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#050510;--s1:#0b0b1a;--s2:#111127;--s3:#181830;--s4:#1e1e38;
+  --bd:rgba(255,255,255,.07);--bd2:rgba(255,255,255,.12);
+  --tx:#e8eaf6;--mu:#6b6b9a;--dim:#3a3a5c;
+  --ac:#7c6eff;--ac2:#5a50cc;
+  --pk:#ff6b9d;--gn:#00f5a0;--yw:#ffd460;--rd:#ff5572;--bl:#38d9f5;--or:#ff9f43;
+  --glass:rgba(255,255,255,.04);
+}
+html{overflow-x:hidden}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* AMBIENT */
+.ambient{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.amb-orb{position:absolute;border-radius:50%;filter:blur(100px);opacity:.07;animation:ambDrift 15s ease-in-out infinite}
+.amb1{width:800px;height:800px;background:var(--ac);top:-300px;left:-300px}
+.amb2{width:600px;height:600px;background:var(--pk);bottom:-200px;right:-200px;animation-delay:7s}
+@keyframes ambDrift{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+
+/* TOP BAR */
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:56px;z-index:200;
+  background:rgba(5,5,16,.92);backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;padding:0 12px;gap:10px;
+}
+.top-logo{
+  width:36px;height:36px;border-radius:11px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--ac),var(--pk));
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  box-shadow:0 0 20px rgba(124,110,255,.3);
+  transition:box-shadow .4s;
+}
+.top-logo.live{animation:logoPulse 2s ease-in-out infinite}
+.top-logo.starting{animation:logoPulse .8s ease-in-out infinite;filter:hue-rotate(80deg)}
+@keyframes logoPulse{
+  0%,100%{box-shadow:0 0 20px rgba(124,110,255,.3)}
+  50%{box-shadow:0 0 40px rgba(0,245,160,.6),0 0 0 6px rgba(0,245,160,.08)}
+}
+.top-name{font-size:15px;font-weight:800;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+
+/* Status Pill */
+.stat-pill{
+  display:flex;align-items:center;gap:6px;
+  background:var(--s2);border:1px solid var(--bd);border-radius:99px;
+  padding:5px 10px;font-size:11.5px;font-weight:600;
+  cursor:default;transition:.3s;
+}
+.stat-dot{width:7px;height:7px;border-radius:50%;background:var(--rd);flex-shrink:0;transition:.3s}
+.stat-dot.on{background:var(--gn);box-shadow:0 0 8px var(--gn);animation:blink 2s infinite}
+.stat-dot.starting{background:var(--yw);box-shadow:0 0 8px var(--yw);animation:blink .8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+.icon-btn{
+  width:34px;height:34px;border-radius:9px;border:1px solid var(--bd);
+  background:transparent;color:var(--tx);font-size:16px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:.15s;position:relative;flex-shrink:0;
+}
+.icon-btn:hover{background:var(--s3);border-color:var(--bd2)}
+.badge{
+  position:absolute;top:-5px;right:-5px;background:var(--rd);
+  color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;
+  border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px;
+}
+
+/* TOAST */
+.toast-wrap{position:fixed;top:64px;right:10px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none;max-width:280px}
+.toast{
+  background:var(--s3);border-radius:12px;padding:11px 15px;font-size:12.5px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);pointer-events:auto;
+  border-left:3px solid var(--bd2);
+  animation:toastIn .3s cubic-bezier(.16,1,.3,1);
+}
+@keyframes toastIn{from{transform:translateX(110%);opacity:0}to{transform:none;opacity:1}}
+.toast.success{border-left-color:var(--gn);color:var(--gn)}
+.toast.error{border-left-color:var(--rd);color:var(--rd)}
+.toast.warn{border-left-color:var(--yw);color:var(--yw)}
+.toast.info{border-left-color:var(--bl);color:var(--bl)}
+
+/* MAIN CONTENT */
+.main{padding:64px 12px 72px;min-height:100vh;position:relative;z-index:1}
+.page{display:none}.page.active{display:block;animation:pgIn .2s ease}
+@keyframes pgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* SECTION TITLE */
+.sec-title{font-size:13px;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.sec-title::before{content:"";flex:1;height:1px;background:var(--bd)}
+
+/* CARDS */
+.card{
+  background:linear-gradient(135deg,var(--s2),var(--s1));
+  border:1px solid var(--bd);border-radius:18px;padding:16px;
+  margin-bottom:12px;transition:.2s;
+}
+.card:hover{border-color:rgba(124,110,255,.2)}
+.card-glow{box-shadow:0 0 30px rgba(124,110,255,.08),inset 0 1px 0 rgba(255,255,255,.05)}
+
+/* STAT GRID */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+.stat-grid.s3{grid-template-columns:repeat(3,1fr)}
+.stat-cell{
+  background:linear-gradient(135deg,var(--s2),var(--s3));
+  border:1px solid var(--bd);border-radius:14px;padding:14px 12px;
+  transition:.2s;cursor:default;
+}
+.stat-cell:hover{border-color:rgba(124,110,255,.25);transform:translateY(-1px)}
+.stat-icon{font-size:20px;margin-bottom:6px}
+.stat-val{font-size:22px;font-weight:900;color:#fff;line-height:1;margin-bottom:3px}
+.stat-val.sm{font-size:16px}
+.stat-lbl{font-size:10px;color:var(--mu);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+
+/* BOT STATUS CARD */
+.bot-state{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-radius:14px;margin-bottom:14px;transition:.4s;
+  border:1px solid var(--bd);position:relative;overflow:hidden;
+}
+.bot-state::before{content:"";position:absolute;inset:0;opacity:.06;transition:.4s}
+.bot-state.running{border-color:rgba(0,245,160,.25)}
+.bot-state.running::before{background:var(--gn)}
+.bot-state.starting{border-color:rgba(255,212,96,.25)}
+.bot-state.starting::before{background:var(--yw)}
+.bot-state.stopped{border-color:rgba(255,85,114,.2)}
+.bot-state.stopped::before{background:var(--rd)}
+.bot-state-icon{font-size:30px;flex-shrink:0}
+.bot-state-info{flex:1}
+.bot-state-txt{font-size:15px;font-weight:800;color:#fff}
+.bot-state-sub{font-size:11px;color:var(--mu);margin-top:2px}
+
+/* BUTTONS */
+.btn{
+  width:100%;padding:12px 10px;border-radius:13px;border:none;
+  font-size:13px;font-weight:700;cursor:pointer;transition:.15s;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  letter-spacing:.2px;
+}
+.btn:active{transform:scale(.95)}
+.btn:disabled{opacity:.4;pointer-events:none}
+.btn-start{background:linear-gradient(135deg,var(--gn),#00c48c);color:#000}
+.btn-stop{background:linear-gradient(135deg,var(--rd),#ff3357);color:#fff}
+.btn-restart{background:linear-gradient(135deg,var(--yw),var(--or));color:#000}
+.btn-npm{background:linear-gradient(135deg,var(--bl),var(--ac));color:#fff}
+.btn-backup{background:linear-gradient(135deg,#a78bfa,var(--pk));color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--bd);color:var(--tx)}
+.btn-ghost:hover{background:var(--s3)}
+.btn-primary{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff}
+.btn-danger{background:transparent;border:1px solid rgba(255,85,114,.3);color:var(--rd)}
+.btn-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.btn-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+/* PROGRESS BAR */
+.prog-wrap{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:14px;display:none;margin-bottom:12px}
+.prog-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;color:var(--tx)}
+.prog-track{height:8px;background:var(--s1);border-radius:99px;overflow:hidden;border:1px solid var(--bd)}
+.prog-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--ac),var(--gn));transition:width .2s;width:0}
+.prog-status{font-size:11px;color:var(--mu);margin-top:7px;min-height:16px}
+
+/* RAM / MONITOR BARS */
+.mon-bar-wrap{margin-bottom:14px}
+.mon-bar-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.mon-bar-label{font-size:12px;font-weight:600;color:var(--tx)}
+.mon-bar-val{font-size:12px;color:var(--mu);font-variant-numeric:tabular-nums}
+.mon-track{height:10px;border-radius:6px;background:var(--s1);border:1px solid var(--bd);overflow:hidden}
+.mon-fill{height:100%;border-radius:6px;transition:width .5s ease,background .5s ease}
+.mon-peak{font-size:10px;color:var(--mu);margin-top:5px;display:flex;justify-content:flex-end;gap:4px}
+.mon-peak b{color:var(--bl)}
+.mon-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 9px;border-radius:99px;font-size:10px;font-weight:700;margin-left:6px;
+}
+.mon-badge.ok{background:rgba(0,245,160,.12);color:var(--gn);border:1px solid rgba(0,245,160,.2)}
+.mon-badge.warn{background:rgba(255,212,96,.12);color:var(--yw);border:1px solid rgba(255,212,96,.2)}
+.mon-badge.err{background:rgba(255,85,114,.12);color:var(--rd);border:1px solid rgba(255,85,114,.2)}
+.mon-badge.info{background:rgba(56,217,245,.12);color:var(--bl);border:1px solid rgba(56,217,245,.2)}
+
+/* TERMINAL */
+.terminal{
+  background:#000;border-radius:14px;overflow:hidden;
+  border:1px solid #1a3a1a;
+  box-shadow:0 0 40px rgba(0,245,160,.06),inset 0 0 80px rgba(0,245,160,.02);
+}
+.term-topbar{
+  background:#080e08;padding:9px 14px;
+  display:flex;align-items:center;gap:6px;border-bottom:1px solid #1a3a1a;
+}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.term-dot.r{background:#ff5f56}.term-dot.y{background:#ffbd2e}.term-dot.g{background:#27c93f}
+.term-title{margin-left:8px;font-family:'Courier New',monospace;font-size:11px;color:#4a7a4a}
+.term-body{
+  padding:16px;font-family:'Courier New',monospace;
+  font-size:12.5px;line-height:1.9;color:#33ff66;
+  text-shadow:0 0 5px rgba(51,255,102,.4);
+  min-height:300px;
+}
+.t-line{white-space:normal;word-break:break-word}
+.t-dim{color:#2a5a2a;font-size:11px}
+.t-bold{color:#7fffb0;text-shadow:0 0 8px rgba(127,255,176,.6)}
+.t-cursor{display:inline-block;animation:tcBlink 1s step-end infinite}
+@keyframes tcBlink{0%,50%{opacity:1}51%,100%{opacity:0}}
+.t-sep{border-top:1px dashed #1a3a1a;margin:10px 0}
+.t-bar-row{margin:3px 0 12px}
+.t-bar{height:8px;background:#060e06;border:1px solid #1a3a1a;border-radius:2px;overflow:hidden}
+.t-bar-fill{height:100%;transition:width .6s ease;box-shadow:0 0 10px currentColor}
+.t-net{background:#00e5ff;color:#00e5ff}
+.t-cpu{background:#ffd700;color:#ffd700}
+.t-ram{background:#ff4466;color:#ff4466}
+.t-glitch{
+  font-size:18px;font-weight:900;letter-spacing:2px;color:#33ff66;
+  text-shadow:0 0 10px rgba(51,255,102,.6);margin-bottom:10px;
+  animation:tGlitch 4s infinite;position:relative;
+}
+.t-glitch::before,.t-glitch::after{content:attr(data-t);position:absolute;left:0;top:0}
+.t-glitch::before{color:#ff33aa;animation:tG1 2.5s infinite;clip-path:inset(0 0 60% 0)}
+.t-glitch::after{color:#33ccff;animation:tG2 3s infinite;clip-path:inset(60% 0 0 0)}
+@keyframes tGlitch{0%,90%,100%{transform:none}92%{transform:translate(-2px,1px)}95%{transform:translate(2px,-1px)}}
+@keyframes tG1{0%,90%,100%{transform:none}92%{transform:translate(2px,-1px)}}
+@keyframes tG2{0%,90%,100%{transform:none}92%{transform:translate(-3px,0)}}
+.t-tail-info{color:#5fae7a}.t-tail-success{color:#7fffb0}.t-tail-error{color:#ff8080}.t-tail-warn{color:#ffd633}
+
+/* LOGS */
+.log-controls{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;flex-wrap:nowrap}
+.log-controls::-webkit-scrollbar{display:none}
+.lf-btn{
+  padding:6px 12px;border-radius:8px;border:1px solid var(--bd);
+  background:transparent;color:var(--mu);font-size:11.5px;cursor:pointer;
+  white-space:nowrap;transition:.15s;flex-shrink:0;
+}
+.lf-btn.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.lf-btn:hover:not(.on){background:var(--s3)}
+.logbox{
+  background:#06060f;border:1px solid var(--bd);border-radius:14px;
+  padding:10px;height:calc(100vh - 210px);overflow-y:auto;
+  font-family:'Courier New',monospace;font-size:11.5px;
+}
+.logbox::-webkit-scrollbar{width:4px}
+.logbox::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+.log-entry{
+  display:flex;gap:8px;align-items:flex-start;
+  padding:7px 10px;margin-bottom:4px;border-radius:9px;
+  background:var(--s1);border-left:3px solid var(--bd);
+  transition:.12s;
+}
+.le-icon{flex-shrink:0;font-size:12px;line-height:1.5}
+.le-time{color:var(--mu);white-space:nowrap;font-size:9.5px;flex-shrink:0;padding-top:2px;opacity:.7}
+.le-txt{word-break:normal;overflow-wrap:anywhere;line-height:1.55}
+.le-info{border-left-color:#3a4a7a}.le-info .le-txt{color:#9ca3c0}
+.le-success{border-left-color:var(--gn);background:rgba(0,245,160,.05)}.le-success .le-txt{color:#7fe8ba}
+.le-error{border-left-color:var(--rd);background:rgba(255,85,114,.06)}.le-error .le-txt{color:#ff9bb0}
+.le-warn{border-left-color:var(--yw);background:rgba(255,212,96,.06)}.le-warn .le-txt{color:#ffd980}
+
+body.log-full .topbar,.body.log-full .navtabs,.body.log-full .toast-wrap{display:none!important}
+body.log-full .logbox{position:fixed;inset:0;height:100vh;border-radius:0;z-index:300;background:#000;padding:8px 8px 56px}
+body.log-full .log-controls{position:fixed;bottom:0;left:0;right:0;z-index:301;background:rgba(5,5,16,.97);backdrop-filter:blur(12px);padding:8px;border-top:1px solid var(--bd);margin:0}
+
+/* FILE MANAGER */
+.pathbar{
+  background:var(--s2);border:1px solid var(--bd);border-radius:10px;
+  padding:9px 13px;font-size:12px;color:var(--mu);
+  margin-bottom:10px;overflow-x:auto;white-space:nowrap;
+  display:flex;align-items:center;gap:4px;
+}
+.pathbar::-webkit-scrollbar{display:none}
+.pp{color:var(--ac);cursor:pointer;font-weight:700;transition:.15s}
+.pp:hover{opacity:.8;text-decoration:underline}
+.fm-toolbar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tbtn{
+  padding:7px 12px;border-radius:9px;border:1px solid var(--bd);
+  background:var(--s2);color:var(--tx);font-size:12px;cursor:pointer;
+  white-space:nowrap;transition:.15s;display:inline-flex;align-items:center;gap:5px;
+}
+.tbtn:hover{background:var(--s3);border-color:var(--bd2)}
+.tbtn.primary{background:var(--ac);border-color:var(--ac);color:#fff}
+.tbtn.danger{border-color:rgba(255,85,114,.3);color:var(--rd)}
+.tbtn.danger:hover{background:rgba(255,85,114,.1)}
+.search-input{
+  width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--s2);color:var(--tx);font-size:13px;outline:none;
+  margin-bottom:10px;transition:.2s;
+}
+.search-input:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(124,110,255,.1)}
+
+/* File list */
+.file-list{display:flex;flex-direction:column;gap:6px}
+.file-row{
+  display:flex;align-items:center;gap:12px;padding:11px 13px;
+  border-radius:13px;cursor:pointer;transition:.15s;
+  background:linear-gradient(135deg,var(--s2),var(--s1));
+  border:1px solid var(--bd);
+}
+.file-row:hover{border-color:rgba(124,110,255,.25);transform:translateX(2px)}
+.file-row:active{transform:scale(.98)}
+.file-icon{
+  width:38px;height:38px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  flex-shrink:0;background:var(--s3);
+}
+.fi-code{background:rgba(255,107,107,.12)}.fi-data{background:rgba(56,217,245,.12)}
+.fi-media{background:rgba(160,100,255,.12)}.fi-dir{background:rgba(124,110,255,.15)}
+.fi-archive{background:rgba(255,212,96,.12)}.fi-doc{background:rgba(0,245,160,.08)}
+.file-info{flex:1;overflow:hidden}
+.file-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-meta{font-size:10px;color:var(--mu);margin-top:2px}
+.file-actions{display:flex;gap:2px;flex-shrink:0}
+.fab{
+  padding:6px 8px;border-radius:8px;border:none;
+  background:transparent;color:var(--mu);font-size:12px;cursor:pointer;transition:.12s;
+}
+.fab:hover{background:var(--s3);color:var(--tx)}
+.fab.del:hover{background:rgba(255,85,114,.12);color:var(--rd)}
+.fm-empty{padding:48px;text-align:center;color:var(--mu)}
+.fm-summary{font-size:10.5px;color:var(--mu);padding:2px 4px 10px;display:flex;justify-content:space-between}
+
+/* CODE EDITOR */
+.editor-header{
+  background:var(--s2);border:1px solid var(--bd);border-radius:12px 12px 0 0;
+  padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.ed-filename{flex:1;font-size:12px;color:var(--ac);font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.ed-lang-badge{font-size:10px;color:var(--mu);background:var(--s3);padding:2px 8px;border-radius:5px}
+.editor-wrap{position:relative}
+#ced{
+  width:100%;height:calc(100vh - 230px);
+  background:#03030e;border:1px solid var(--bd);border-top:none;border-radius:0 0 12px 12px;
+  padding:14px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;
+  line-height:1.8;resize:none;outline:none;tab-size:2;
+}
+#cedHl{
+  position:absolute;top:0;left:0;width:100%;height:calc(100vh - 230px);
+  margin:0;padding:14px;background:#03030e;border:1px solid var(--bd);
+  border-top:none;border-radius:0 0 12px 12px;
+  color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;
+  line-height:1.8;white-space:pre-wrap;word-break:break-word;
+  overflow:hidden;pointer-events:none;z-index:0;display:none;tab-size:2;
+}
+.editor-wrap.hl-active #cedHl{display:block}
+.editor-wrap.hl-active #ced{color:transparent;caret-color:#e6edf3;background:transparent;position:relative;z-index:1}
+.tok-kw{color:#ff79c6}.tok-str{color:#f1fa8c}.tok-num{color:#bd93f9}.tok-com{color:#6272a4;font-style:italic}.tok-fn{color:#50fa7b}.tok-prop{color:#8be9fd}
+
+/* UPLOAD */
+.upload-zone{
+  border:2px dashed var(--bd);border-radius:18px;padding:48px 20px;
+  text-align:center;cursor:pointer;background:var(--s2);
+  transition:.3s;margin-bottom:14px;
+}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--ac);background:rgba(124,110,255,.06)}
+.uz-icon{font-size:52px;margin-bottom:14px;animation:uFloat 3s ease-in-out infinite}
+@keyframes uFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* MODALS */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;backdrop-filter:blur(8px);align-items:flex-end;justify-content:center}
+.overlay.open{display:flex}
+.modal{
+  background:var(--s2);border:1px solid var(--bd);border-radius:22px 22px 0 0;
+  padding:24px;width:100%;max-width:520px;
+  animation:mSlide .28s cubic-bezier(.16,1,.3,1);
+  padding-bottom:max(24px,env(safe-area-inset-bottom));
+}
+@keyframes mSlide{from{transform:translateY(100%)}to{transform:none}}
+.modal h3{font-size:16px;font-weight:900;margin-bottom:16px;color:#fff;text-align:center}
+.modal-input{
+  width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--bd);
+  background:var(--s1);color:var(--tx);font-size:14px;outline:none;
+  margin-bottom:12px;transition:.2s;
+}
+.modal-input:focus{border-color:var(--ac)}
+.modal-btns{display:flex;gap:8px}
+
+/* ALERT DRAWER */
+.alert-banner{position:fixed;top:60px;left:8px;right:8px;z-index:600;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.alert-item-banner{
+  pointer-events:auto;background:var(--s2);border:1px solid var(--bd);
+  border-left:4px solid var(--bl);border-radius:12px;padding:11px 14px;
+  font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.5);
+  animation:aSlide .3s ease;display:flex;gap:8px;align-items:flex-start;
+}
+.alert-item-banner.error{border-left-color:var(--rd)}
+.alert-item-banner.warn{border-left-color:var(--yw)}
+@keyframes aSlide{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}
+.aib-x{margin-left:auto;cursor:pointer;color:var(--mu);border:none;background:transparent;font-size:16px;padding:0 2px}
+
+.drawer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:700}
+.drawer-overlay.show{display:block}
+.drawer{
+  position:fixed;top:0;right:-100%;width:min(420px,94vw);height:100%;
+  background:var(--s1);z-index:701;
+  transition:right .28s cubic-bezier(.16,1,.3,1);
+  box-shadow:-12px 0 50px rgba(0,0,0,.5);display:flex;flex-direction:column;
+}
+.drawer.show{right:0}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;padding:18px;border-bottom:1px solid var(--bd)}
+.drawer-body{flex:1;overflow-y:auto;padding:12px}
+.alert-list-item{
+  background:var(--s2);border-left:3px solid var(--bd);border-radius:10px;
+  padding:12px;margin-bottom:8px;font-size:12px;
+}
+.alert-list-item.error{border-left-color:var(--rd)}
+.alert-list-item.warn{border-left-color:var(--yw)}
+.alert-list-item.info{border-left-color:var(--bl)}
+.ali-title{font-weight:700;margin-bottom:3px}
+.ali-time{font-size:10px;color:var(--mu);margin-top:4px}
+
+/* FILE TEST PANEL */
+.test-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:800;backdrop-filter:blur(6px)}
+.test-overlay.show{display:block}
+.test-panel{
+  display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(500px,94vw);max-height:82vh;
+  background:var(--s1);border:1px solid var(--bd);border-radius:18px;
+  z-index:801;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.7);
+}
+.test-panel.show{display:flex}
+.test-body{flex:1;overflow-y:auto;padding:14px}
+.test-sec{background:var(--s2);border-radius:10px;padding:12px;margin-bottom:9px;border-left:3px solid var(--bd)}
+.test-sec.ok{border-left-color:var(--gn)}.test-sec.bad{border-left-color:var(--rd)}
+
+/* SETTINGS */
+.set-card{background:var(--s2);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.set-title{font-size:13px;font-weight:800;color:#fff;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.set-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:8px;
+}
+.set-row:last-child{border-bottom:none;padding-bottom:0}
+.set-row-label{font-size:13px;flex:1}
+.set-row-sub{font-size:10px;color:var(--mu);margin-top:2px}
+.set-input{
+  padding:7px 10px;border-radius:8px;border:1px solid var(--bd);
+  background:var(--s1);color:var(--tx);font-size:12px;outline:none;
+  max-width:160px;transition:.2s;width:100%;
+}
+.set-input:focus{border-color:var(--ac)}
+.toggle{position:relative;width:44px;height:24px;flex-shrink:0}
+.toggle input{display:none}
+.toggle-track{position:absolute;inset:0;background:var(--dim);border-radius:99px;cursor:pointer;transition:.3s}
+.toggle input:checked+.toggle-track{background:var(--gn)}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.3s;pointer-events:none}
+.toggle input:checked~.toggle-thumb{transform:translateX(20px)}
+.mongo-status-badge{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+  border-radius:99px;font-size:12px;font-weight:700;border:1px solid var(--bd);
+}
+.mongo-status-badge.ok{border-color:rgba(0,245,160,.3);color:var(--gn);background:rgba(0,245,160,.07)}
+.mongo-status-badge.err{border-color:rgba(255,85,114,.3);color:var(--rd);background:rgba(255,85,114,.07)}
+
+/* Cookie textarea */
+.cookie-area{
+  width:100%;height:80px;background:var(--s1);border:1px solid var(--bd);
+  border-radius:10px;padding:10px;color:var(--tx);font-family:'Courier New',monospace;
+  font-size:11px;resize:none;outline:none;transition:.2s;line-height:1.5;margin:10px 0;
+}
+.cookie-area:focus{border-color:var(--ac)}
+#envEd{
+  width:100%;height:240px;background:#03030e;border:1px solid var(--bd);
+  border-radius:10px;padding:12px;color:#e6edf3;font-family:'Courier New',monospace;
+  font-size:13px;line-height:1.8;resize:vertical;outline:none;margin-bottom:12px;transition:.2s;
+}
+#envEd:focus{border-color:var(--ac)}
+
+/* History */
+.hist-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto}
+.hist-row{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;border:1px solid var(--bd);font-size:10.5px}
+.hist-date{color:var(--mu);flex:1}
+.hist-up{color:var(--gn);font-weight:700}
+.hist-code{color:var(--yw)}
+
+/* OWNER CARD */
+.owner-card{
+  background:linear-gradient(135deg,#120f28,#1e1640);
+  border:1px solid rgba(160,100,255,.2);border-radius:18px;padding:18px;margin-bottom:12px;
+  box-shadow:0 0 40px rgba(124,110,255,.1);
+}
+.owner-crown{text-align:center;font-size:13px;font-weight:900;color:#e0b840;text-shadow:0 0 12px rgba(224,184,64,.4);margin-bottom:14px;letter-spacing:.5px}
+.owner-row{display:flex;justify-content:space-between;padding:7px 2px;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.04)}
+.owner-row:last-child{border-bottom:none}
+.owner-k{color:var(--mu)}.owner-v{color:var(--tx);font-weight:600;text-align:right}
+.owner-sep{text-align:center;font-size:10px;color:#8870c0;margin:12px 0 8px;letter-spacing:1.5px;text-transform:uppercase}
+
+/* SEARCH RESULTS */
+.search-result{padding:9px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;margin-bottom:5px;cursor:pointer;transition:.12s}
+.search-result:hover{background:var(--s3);border-color:rgba(124,110,255,.2)}
+.sr-path{font-size:11px;color:var(--ac);margin-bottom:2px;font-weight:600}
+.sr-meta{font-size:10.5px;color:var(--mu)}
+
+/* MULTI-UPLOAD AREA */
+.multi-up{border:1px dashed var(--bd);border-radius:12px;padding:16px;background:var(--s2);margin-bottom:12px}
+
+/* BOTTOM NAVIGATION */
+.navtabs{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:rgba(5,5,16,.95);backdrop-filter:blur(24px);
+  border-top:1px solid var(--bd);
+  display:grid;grid-template-columns:repeat(7,1fr);
+  height:60px;padding-bottom:env(safe-area-inset-bottom);
+}
+.nav-tab{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;cursor:pointer;border:none;background:transparent;
+  color:var(--mu);transition:.15s;position:relative;padding:0;
+}
+.nav-tab.active{color:var(--ac)}
+.nav-tab.active::before{
+  content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:32px;height:2px;background:var(--ac);border-radius:0 0 3px 3px;
+}
+.nav-icon{font-size:18px;line-height:1}
+.nav-label{font-size:8.5px;font-weight:700;letter-spacing:.2px}
+
+/* Responsive scrollbars */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<!-- Ambient background -->
+<div class="ambient"><div class="amb-orb amb1"></div><div class="amb-orb amb2"></div></div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="top-logo" id="topLogo">🤖</div>
+  <div class="top-name">${pname}</div>
+  <div class="top-right">
+    <div class="stat-pill" id="botPill">
+      <div class="stat-dot" id="tDot"></div>
+      <span id="tStatus">সংযোগ...</span>
+    </div>
+    <div class="stat-pill" id="mongoPill" style="display:none">
+      <div class="stat-dot" id="mDot"></div>
+      <span id="mStatus">DB</span>
+    </div>
+    <button class="icon-btn" onclick="openAlerts()" title="নোটিফিকেশন">
+      🔔<span class="badge" id="bellBadge">0</span>
+    </button>
+    <button class="icon-btn" onclick="location.href='/logout'" title="লগআউট">🚪</button>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ALERT BANNER -->
+<div class="alert-banner" id="alertBanner"></div>
+
+<!-- ALERT DRAWER -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeAlerts()"></div>
+<div class="drawer" id="alertDrawer">
+  <div class="drawer-head">
+    <span style="font-weight:800;font-size:15px">🔔 নোটিফিকেশন</span>
+    <div style="display:flex;gap:6px">
+      <button class="tbtn" onclick="clearAlerts()">🗑 মুছো</button>
+      <button class="tbtn" onclick="closeAlerts()">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body" id="alertList"></div>
+</div>
+
+<!-- FILE TEST OVERLAY -->
+<div class="test-overlay" id="testOverlay" onclick="closeTest()"></div>
+<div class="test-panel" id="testPanel">
+  <div class="drawer-head">
+    <span style="font-weight:800;font-size:15px">🧪 ফাইল টেস্ট রিপোর্ট</span>
+    <button class="tbtn" onclick="closeTest()">✕ বন্ধ</button>
+  </div>
+  <div class="test-body" id="testBody"></div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+<!-- ── HOME ── -->
+<div class="page active" id="pg-home">
+
+  <!-- Bot Status -->
+  <div class="bot-state stopped" id="botStateCard">
+    <div class="bot-state-icon" id="botStateIcon">🔴</div>
+    <div class="bot-state-info">
+      <div class="bot-state-txt" id="sTxt">চেক করছে...</div>
+      <div class="bot-state-sub" id="sUp"></div>
+    </div>
+    <div class="stat-dot" id="sDot"></div>
+  </div>
+
+  <!-- Cookie Box -->
+  <div class="card card-glow" style="margin-bottom:12px">
+    <div style="font-size:13px;font-weight:800;margin-bottom:4px">🍪 Facebook Cookie / Appstate</div>
+    <div style="font-size:11px;color:var(--mu);margin-bottom:6px">Cookie অথবা appstate.json paste করুন</div>
+    <div id="cookieStatus" style="display:none;font-size:12px;padding:7px 10px;border-radius:8px;margin-bottom:8px"></div>
+    <textarea class="cookie-area" id="cookieInput" placeholder='[{"key":"c_user","value":"..."}] অথবা plain cookie string'></textarea>
+    <button class="btn btn-start" onclick="saveCookie()">✅ Cookie সেভ ও বট চালু করুন</button>
+  </div>
+
+  <!-- Control Buttons -->
+  <div class="card">
+    <div class="btn-grid2">
+      <button class="btn btn-start" onclick="botAct('start')">▶ চালু করো</button>
+      <button class="btn btn-stop" onclick="botAct('stop')">⏹ বন্ধ করো</button>
+    </div>
+    <div class="btn-grid3">
+      <button class="btn btn-restart" onclick="botAct('restart')">🔄 রিস্টার্ট</button>
+      <button class="btn btn-npm" onclick="npmInst()">📦 npm</button>
+      <button class="btn btn-backup" onclick="doBackup()">💾 Backup</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-ghost" onclick="mongoSync()" style="flex:1">☁️ Sync MongoDB</button>
+      <button class="btn btn-ghost" onclick="mongoRestore()" style="flex:1">🔄 Restore</button>
+    </div>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stat-grid">
+    <div class="stat-cell"><div class="stat-icon">💾</div><div class="stat-val" id="cMem">--</div><div class="stat-lbl">Panel RAM MB</div></div>
+    <div class="stat-cell"><div class="stat-icon">⏱️</div><div class="stat-val sm" id="cSup">--</div><div class="stat-lbl">Server Uptime</div></div>
+    <div class="stat-cell"><div class="stat-icon">📦</div><div class="stat-val" id="cFiles">--</div><div class="stat-lbl">বট ফাইল</div></div>
+    <div class="stat-cell"><div class="stat-icon">🚀</div><div class="stat-val" id="cStarts">--</div><div class="stat-lbl">মোট Start</div></div>
+  </div>
+  <div class="stat-grid s3">
+    <div class="stat-cell"><div class="stat-icon">💥</div><div class="stat-val" id="cCrash">--</div><div class="stat-lbl">Crash</div></div>
+    <div class="stat-cell"><div class="stat-icon">🕐</div><div class="stat-val sm" id="cTup">--</div><div class="stat-lbl">মোট Uptime</div></div>
+    <div class="stat-cell"><div class="stat-icon">🖥️</div><div class="stat-val sm" id="cNode">--</div><div class="stat-lbl">Node.js</div></div>
+  </div>
+
+  <!-- Restart History -->
+  <div class="card">
+    <div class="sec-title">📈 Restart ইতিহাস</div>
+    <div class="hist-list" id="histList"><div style="font-size:12px;color:var(--mu);text-align:center;padding:12px">লোড হচ্ছে...</div></div>
+  </div>
+</div>
+
+<!-- ── MONITOR ── -->
+<div class="page" id="pg-monitor">
+  <div class="card card-glow">
+    <div class="sec-title" style="margin-bottom:14px">🖥️ RAM ব্যবহার <span class="mon-badge info">সীমা ৫১২MB</span></div>
+    <div id="mHeavyRow" style="display:none">
+      <div class="mon-bar-wrap">
+        <div class="mon-bar-header"><span class="mon-bar-label">⬇️ সক্রিয় ডাউনলোড</span><span class="mon-bar-val" id="mHeavyTxt">--</span></div>
+        <div class="mon-track"><div class="mon-fill" id="mHeavyBar" style="width:0%;background:var(--bl)"></div></div>
+      </div>
+    </div>
+    <div class="mon-bar-wrap">
+      <div class="mon-bar-header"><span class="mon-bar-label">🧩 প্যানেল</span><span class="mon-bar-val" id="mPanelTxt">-- MB</span></div>
+      <div class="mon-track"><div class="mon-fill" id="mPanelBar" style="width:0%"></div></div>
+      <div class="mon-peak">📈 সর্বোচ্চ: <b id="mPanelPeak">--</b></div>
+    </div>
+    <div class="mon-bar-wrap">
+      <div class="mon-bar-header"><span class="mon-bar-label">🤖 বট</span><span class="mon-bar-val" id="mBotTxt">-- MB</span></div>
+      <div class="mon-track"><div class="mon-fill" id="mBotBar" style="width:0%"></div></div>
+      <div class="mon-peak">📈 সর্বোচ্চ: <b id="mBotPeak">--</b></div>
+    </div>
+    <div class="mon-bar-wrap" style="margin-bottom:0">
+      <div class="mon-bar-header"><span class="mon-bar-label">⚡ মোট</span><span class="mon-bar-val" id="mTotalTxt">-- MB</span></div>
+      <div class="mon-track"><div class="mon-fill" id="mTotalBar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="card card-glow">
+    <div class="sec-title" style="margin-bottom:14px">🗄️ MongoDB Atlas <span class="mon-badge info">M0 সীমা ৫১২MB</span></div>
+    <div class="mon-bar-wrap">
+      <div class="mon-bar-header"><span class="mon-bar-label">💽 ব্যবহৃত</span><span class="mon-bar-val" id="mMongoTxt">-- MB</span></div>
+      <div class="mon-track"><div class="mon-fill" id="mMongoBar" style="width:0%"></div></div>
+      <div class="mon-peak">📈 সর্বোচ্চ: <b id="mMongoPeak">--</b></div>
+    </div>
+    <div class="stat-grid s3" style="margin-top:12px;margin-bottom:0">
+      <div class="stat-cell"><div class="stat-icon">📄</div><div class="stat-val sm" id="mMongoObjs">--</div><div class="stat-lbl">এন্ট্রি</div></div>
+      <div class="stat-cell"><div class="stat-icon">💾</div><div class="stat-val sm" id="mMongoData">--</div><div class="stat-lbl">Data MB</div></div>
+      <div class="stat-cell"><div class="stat-icon">🔎</div><div class="stat-val sm" id="mMongoIdx">--</div><div class="stat-lbl">Index MB</div></div>
+    </div>
+  </div>
+
+  <div class="card card-glow">
+    <div class="sec-title" style="margin-bottom:14px">⏳ লাইফটাইম সামারি <span class="mon-badge ok">MongoDB-তে স্থায়ী</span></div>
+    <div class="stat-grid s3" style="margin-bottom:0">
+      <div class="stat-cell"><div class="stat-icon">🚀</div><div class="stat-val sm" id="mLtStarts">--</div><div class="stat-lbl">মোট Start</div></div>
+      <div class="stat-cell"><div class="stat-icon">💥</div><div class="stat-val sm" id="mLtCrashes">--</div><div class="stat-lbl">Crash</div></div>
+      <div class="stat-cell"><div class="stat-icon">🕒</div><div class="stat-val sm" id="mLtUptime">--</div><div class="stat-lbl">Uptime</div></div>
+    </div>
+    <div style="font-size:10px;color:var(--mu);margin-top:10px">📅 যবে থেকে: <b id="mLtSince" style="color:var(--bl)">--</b></div>
+  </div>
+</div>
+
+<!-- ── TERMINAL ── -->
+<div class="page" id="pg-term">
+  <div class="terminal">
+    <div class="term-topbar">
+      <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+      <span class="term-title">root@bot-panel:~# monitor.sh</span>
+    </div>
+    <div class="term-body">
+      <div class="t-glitch" data-t="BOT PANEL v2.0">BOT PANEL v2.0</div>
+      <div class="t-line t-dim">[<span id="hkTime">--:--:--</span>] secure link <span style="color:#33ff66">✓</span></div>
+      <div class="t-line t-dim">[sys] mongo ......... <span style="color:#33ff66">OK</span></div>
+      <div class="t-line t-dim">[sys] ipc ........... <span style="color:#33ff66">OK</span></div>
+      <div class="t-sep"></div>
+      <div class="t-line">🌐 NET ⬇ <b id="hkRx">0.0</b> KB/s &nbsp; ⬆ <b id="hkTx">0.0</b> KB/s</div>
+      <div class="t-bar-row"><div class="t-bar"><div class="t-bar-fill t-net" id="hkNetBar" style="width:0%"></div></div></div>
+      <div class="t-line">🧠 CPU <b id="hkCpu">0</b>%</div>
+      <div class="t-bar-row"><div class="t-bar"><div class="t-bar-fill t-cpu" id="hkCpuBar" style="width:0%"></div></div></div>
+      <div class="t-line">💾 RAM <b id="hkRam">0</b>% <span class="t-dim">(512MB)</span></div>
+      <div class="t-bar-row"><div class="t-bar"><div class="t-bar-fill t-ram" id="hkRamBar" style="width:0%"></div></div></div>
+      <div class="t-sep"></div>
+      <div class="t-line">🤖 BOT: <b id="hkBotSt" style="color:#ff5566">OFFLINE</b></div>
+      <div class="t-line">⏱️ UPTIME: <b id="hkUptime">00:00:00</b></div>
+      <div class="t-sep"></div>
+      <div class="t-line t-dim">$ tail -f live.log</div>
+      <div id="hkTail"></div>
+      <div class="t-line t-dim">&gt; <span class="t-cursor">▋</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LOGS ── -->
+<div class="page" id="pg-logs">
+  <div class="log-controls">
+    <button class="lf-btn on" onclick="setLF('all',this)">📋 সব</button>
+    <button class="lf-btn" onclick="setLF('success',this)">✅ সফল</button>
+    <button class="lf-btn" onclick="setLF('error',this)">❌ ত্রুটি</button>
+    <button class="lf-btn" onclick="setLF('warn',this)">⚠️ সতর্ক</button>
+    <button class="lf-btn" onclick="clearLogs()">🗑 মুছো</button>
+    <button class="lf-btn" onclick="window.open('/api/bot/downloadlog')">⬇️ ডাউনলোড</button>
+    <button class="lf-btn" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'↓ Auto':'↕ Manual'">↓ Auto</button>
+    <button class="lf-btn" onclick="toggleLogFull()">⛶ Full</button>
+  </div>
+  <div class="logbox" id="lbox"></div>
+</div>
+
+<!-- ── FILES ── -->
+<div class="page" id="pg-files">
+  <!-- Editor view -->
+  <div id="edView" style="display:none">
+    <div class="editor-header">
+      <button class="tbtn" onclick="closeEd()">← ফিরে</button>
+      <span class="ed-filename" id="edFn"></span>
+      <span class="ed-lang-badge" id="edLang"></span>
+      <button class="tbtn" onclick="testFile()">🧪</button>
+      <button class="tbtn primary" onclick="saveFile()">💾 সেভ</button>
+      <button class="tbtn" onclick="dlF(curEdit)">⬇️</button>
+    </div>
+    <div class="editor-wrap" id="edWrap">
+      <pre id="cedHl" aria-hidden="true"><code></code></pre>
+      <textarea id="ced" spellcheck="false" oninput="onEdInput()" onscroll="syncEdScroll()"></textarea>
+    </div>
+  </div>
+
+  <!-- File manager view -->
+  <div id="fmView">
+    <div class="pathbar" id="pathBar">📁 root</div>
+    <div class="fm-summary" id="fmSummary"></div>
+    <div class="fm-toolbar">
+      <button class="tbtn primary" onclick="showM('mkdir')">📁 +</button>
+      <button class="tbtn primary" onclick="showM('newfile')">📄 +</button>
+      <button class="tbtn" onclick="loadFiles(curDir)">🔄</button>
+      <button class="tbtn" onclick="editF('package.json')">📋 pkg</button>
+      <button class="tbtn" onclick="editF('index.js')">📜 index</button>
+      <button class="tbtn" onclick="editF('.env')">🔐 .env</button>
+    </div>
+    <input class="search-input" type="text" id="fq" placeholder="🔍 ফাইল খোঁজুন..." oninput="doFS()">
+    <div id="fsRes" style="display:none;margin-bottom:10px"></div>
+    <div class="file-list" id="flist"></div>
+  </div>
+</div>
+
+<!-- ── UPLOAD ── -->
+<div class="page" id="pg-upload">
+  <div class="upload-zone" id="upZone" onclick="document.getElementById('fInp').click()">
+    <div class="uz-icon">📦</div>
+    <div style="font-size:15px;font-weight:800;margin-bottom:6px">ZIP আপলোড</div>
+    <div style="color:var(--mu);font-size:12px">ক্লিক বা ড্র্যাগ করুন — অটো extract + MongoDB</div>
+    <div style="color:var(--bl);font-size:11px;margin-top:8px;font-weight:600">সর্বোচ্চ ৫০০MB</div>
+  </div>
+  <input type="file" id="fInp" accept=".zip" style="display:none" onchange="uploadF(this.files[0])">
+
+  <div class="prog-wrap" id="progWrap">
+    <div class="prog-label"><span id="upFN">আপলোড হচ্ছে...</span><span id="upPct">0%</span></div>
+    <div class="prog-track"><div class="prog-fill" id="progBar"></div></div>
+    <div class="prog-status" id="upSt"></div>
+  </div>
+
+  <div class="multi-up">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">📄 একক ফাইল</div>
+    <input type="file" id="singleInp" style="display:none" onchange="uploadSingle(this.files[0])">
+    <button class="tbtn primary" onclick="document.getElementById('singleInp').click()">📄 ফাইল বেছে নিন</button>
+    <div id="singleStatus" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
+  </div>
+
+  <div class="multi-up">
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">📂 একাধিক ফাইল</div>
+    <input type="file" id="multiInp" multiple style="display:none" onchange="uploadMulti(this.files)">
+    <button class="tbtn primary" onclick="document.getElementById('multiInp').click()">📂 ফাইল বেছে নিন</button>
+    <div id="multiStatus" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
+  </div>
+
+  <div class="card" style="font-size:12px">
+    <div style="color:var(--mu);margin-bottom:5px">📁 আপলোড হবে:</div>
+    <div style="color:var(--ac);font-weight:700">/bot/<span id="uploadDir">root</span></div>
+  </div>
+</div>
+
+<!-- ── MORE ── -->
+<div class="page" id="pg-more">
+  <!-- Owner -->
+  <div class="owner-card">
+    <div class="owner-crown">👑 MASTER BELAL NETWORK 👑</div>
+    <div class="owner-row"><span class="owner-k">👤 Name</span><span class="owner-v">BELAL YT ✅</span></div>
+    <div class="owner-row"><span class="owner-k">🎭 Nick</span><span class="owner-v">চাঁদের পাহাড়</span></div>
+    <div class="owner-row"><span class="owner-k">🏡 Address</span><span class="owner-v">Kurigram, BD 🇧🇩</span></div>
+    <div class="owner-row"><span class="owner-k">💼 Job</span><span class="owner-v">Bot Developer</span></div>
+    <div class="owner-sep">🔗 যোগাযোগ</div>
+    <div class="owner-row"><span class="owner-k">📞 WhatsApp</span><span class="owner-v">01913246554</span></div>
+    <div class="owner-sep">⚡ এই প্যানেল</div>
+    <div class="owner-row"><span class="owner-k">🏗️ Version</span><span class="owner-v" style="font-family:monospace;font-size:11px">${BUILD_VER}</span></div>
+  </div>
+
+  <!-- ENV -->
+  <div class="set-card">
+    <div class="set-title">⚙️ Environment (.env)</div>
+    <textarea id="envEd" spellcheck="false" placeholder="TOKEN=xxx&#10;COOKIE=xxx&#10;PREFIX=!&#10;ADMIN_ID=123&#10;MONGO_URL=xxx"></textarea>
+    <div style="display:flex;gap:8px">
+      <button class="tbtn primary" onclick="saveEnv()">💾 সেভ</button>
+      <button class="tbtn" onclick="loadEnv()">🔄 রিলোড</button>
+    </div>
+  </div>
+
+  <!-- MongoDB -->
+  <div class="set-card">
+    <div class="set-title">☁️ MongoDB</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="mongo-status-badge" id="mongoBadge">চেক...</div>
+      <div style="font-size:11px;color:var(--mu)" id="mongoInfo"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="tbtn primary" onclick="mongoSync()">☁️ Sync</button>
+      <button class="tbtn" onclick="mongoRestore()">🔄 Restore</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="set-card">
+    <div class="set-title">🔧 সেটিংস</div>
+    <div class="set-row">
+      <div><div class="set-row-label">প্যানেলের নাম</div></div>
+      <input class="set-input" type="text" id="sName" placeholder="${pname}">
+    </div>
+    <div class="set-row">
+      <div><div class="set-row-label">Site URL</div><div class="set-row-sub">ঘুম এড়ানোর জন্য</div></div>
+      <input class="set-input" type="text" id="sSiteUrl" placeholder="https://xxx.onrender.com">
+    </div>
+    <div class="set-row">
+      <div><div class="set-row-label">Auto Restart</div><div class="set-row-sub">সবসময় চালু</div></div>
+      <label class="toggle"><input type="checkbox" id="sAR" checked disabled><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+    </div>
+    <div class="set-row">
+      <div><div class="set-row-label">Schedule Restart</div></div>
+      <label class="toggle"><input type="checkbox" id="sSched"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+    </div>
+    <div class="set-row">
+      <div><div class="set-row-label">Restart সময়</div></div>
+      <input class="set-input" type="time" id="sTime" value="03:00">
+    </div>
+    <div style="margin-top:12px"><button class="tbtn primary" onclick="saveSettings()">💾 সেভ</button></div>
+  </div>
+
+  <!-- Password -->
+  <div class="set-card">
+    <div class="set-title">🔐 পাসওয়ার্ড বদলান</div>
+    <div class="set-row"><span class="set-row-label">বর্তমান</span><input class="set-input" type="password" id="sCur" placeholder="বর্তমান পাসওয়ার্ড"></div>
+    <div class="set-row"><span class="set-row-label">নতুন</span><input class="set-input" type="password" id="sNew" placeholder="নতুন (৪+ অক্ষর)"></div>
+    <div style="margin-top:12px"><button class="tbtn primary" onclick="changePw()">🔐 পরিবর্তন করুন</button></div>
+  </div>
+
+  <!-- Maintenance -->
+  <div class="set-card">
+    <div class="set-title">🛠️ Maintenance</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="tbtn" onclick="doBackup()">💾 Backup</button>
+      <button class="tbtn danger" onclick="clearLogFile()">🗑 Log মুছুন</button>
+      <button class="tbtn danger" onclick="doReset()">🔄 Reset</button>
+      <button class="tbtn" onclick="location.href='/logout'">🚪 লগআউট</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- BOTTOM NAVIGATION -->
+<div class="navtabs">
+  <button class="nav-tab active" onclick="goTab('home',this)"><span class="nav-icon">🏠</span><span class="nav-label">হোম</span></button>
+  <button class="nav-tab" onclick="goTab('monitor',this)"><span class="nav-icon">📊</span><span class="nav-label">মনিটর</span></button>
+  <button class="nav-tab" onclick="goTab('term',this)"><span class="nav-icon">⚡</span><span class="nav-label">Terminal</span></button>
+  <button class="nav-tab" onclick="goTab('logs',this)"><span class="nav-icon">📋</span><span class="nav-label">লগ</span></button>
+  <button class="nav-tab" onclick="goTab('files',this)"><span class="nav-icon">📁</span><span class="nav-label">ফাইল</span></button>
+  <button class="nav-tab" onclick="goTab('upload',this)"><span class="nav-icon">⬆️</span><span class="nav-label">আপলোড</span></button>
+  <button class="nav-tab" onclick="goTab('more',this)"><span class="nav-icon">⚙️</span><span class="nav-label">আরো</span></button>
+</div>
+
+<!-- MODALS -->
+<div class="overlay" id="mod-mkdir" onclick="if(event.target===this)closeM('mkdir')">
+  <div class="modal"><h3>📁 নতুন ফোল্ডার</h3><input class="modal-input" type="text" id="mkN" placeholder="ফোল্ডারের নাম"><div class="modal-btns"><button class="tbtn" onclick="closeM('mkdir')" style="flex:1">বাতিল</button><button class="tbtn primary" onclick="doMkdir()" style="flex:1">তৈরি করুন</button></div></div>
+</div>
+<div class="overlay" id="mod-newfile" onclick="if(event.target===this)closeM('newfile')">
+  <div class="modal"><h3>📄 নতুন ফাইল</h3><input class="modal-input" type="text" id="nfN" placeholder="test.js বা commands/mycommand.js"><div class="modal-btns"><button class="tbtn" onclick="closeM('newfile')" style="flex:1">বাতিল</button><button class="tbtn primary" onclick="doNewFile()" style="flex:1">তৈরি করুন</button></div></div>
+</div>
+<div class="overlay" id="mod-rename" onclick="if(event.target===this)closeM('rename')">
+  <div class="modal"><h3>✏️ নাম পরিবর্তন</h3><input class="modal-input" type="text" id="rnV" placeholder="নতুন নাম"><div class="modal-btns"><button class="tbtn" onclick="closeM('rename')" style="flex:1">বাতিল</button><button class="tbtn primary" onclick="doRename()" style="flex:1">পরিবর্তন</button></div></div>
+</div>
+<div class="overlay" id="mod-copy" onclick="if(event.target===this)closeM('copy')">
+  <div class="modal"><h3>📋 Copy করুন</h3><input class="modal-input" type="text" id="cpTo" placeholder="destination path"><div class="modal-btns"><button class="tbtn" onclick="closeM('copy')" style="flex:1">বাতিল</button><button class="tbtn primary" onclick="doCopy()" style="flex:1">Copy</button></div></div>
+</div>
+
+<!-- ═══════════════ JAVASCRIPT ═══════════════ -->
+<script>
+// ── GLOBAL SAFETY ──
+function _escSafe(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+window.addEventListener('error',function(e){
+  const m=(e.message||'').toLowerCase();
+  if(m.includes('network')||m.includes('fetch')||m.includes('failed to fetch')||m.includes('websocket')||m.includes('load'))return;
+  console.error('[panel error]',e.message,e.filename,e.lineno);
+});
+window.addEventListener('unhandledrejection',function(e){
+  const r=(e.reason&&(e.reason.message||String(e.reason)))||'';
+  if(r.toLowerCase().includes('abort')||r.toLowerCase().includes('fetch')||r.toLowerCase().includes('websocket'))return;
+  console.error('[unhandled]',r);
+});
+
+// ── STATE ──
+let curDir='', curEdit='', renameFrom='', copyFrom='', logFilter='all', autoScroll=true;
+let ws, _wsConnected=false, _botRunning=false, _botUpSec=0;
+let _alertsCache=[], _unreadAlerts=0, _refreshFails=0;
+let _hackTimer=null;
+
+// ── TOAST ──
+function toast(msg,type='success'){
+  const w=document.getElementById('toastWrap');
+  const el=document.createElement('div');
+  el.className='toast '+type;el.textContent=msg;w.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='.3s';setTimeout(()=>el.remove(),300);},4000);
+}
+
+// ── ESC ──
+function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ── FORMAT HELPERS ──
+function fmtT(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return h>0?h+'h '+m+'m':m>0?m+'m '+sc+'s':sc+'s';}
+function fsz(b){if(!b||b===0)return'—';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
+function fdt(d){
+  try{
+    const diff=Math.floor((Date.now()-new Date(d).getTime())/1000);
+    if(diff<0||isNaN(diff))return new Date(d).toLocaleDateString('bn-BD');
+    if(diff<10)return'এইমাত্র';if(diff<60)return diff+'সে আগে';
+    const m=Math.floor(diff/60);if(m<60)return m+'মি আগে';
+    const h=Math.floor(m/60);if(h<24)return h+'ঘ আগে';
+    const dy=Math.floor(h/24);if(dy===1)return'গতকাল';if(dy<7)return dy+'দিন আগে';
+    return new Date(d).toLocaleDateString('bn-BD',{month:'short',day:'numeric'});
+  }catch{return'';}
+}
+function _fmtLt(s){const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);if(d>0)return d+'দ '+h+'ঘ';if(h>0)return h+'ঘ '+m+'মি';return m+'মি';}
+setInterval(()=>{document.querySelectorAll('[data-mtime]').forEach(el=>{const m=el.getAttribute('data-mtime');if(m)el.textContent=fdt(m);});},30000);
+setInterval(()=>{if(!_botRunning)return;_botUpSec++;const el=document.getElementById('sUp');if(el)el.textContent='⏱ চলছে: '+fmtT(_botUpSec);},1000);
+
+// ── TABS ──
+function goTab(id,btn){
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pg-'+id).classList.add('active');
+  if(id!=='term'){clearInterval(_hackTimer);_hackTimer=null;}
+  if(id==='files')loadFiles(curDir);
+  if(id==='more'){loadEnv();loadSettings();}
+  if(id==='logs')document.getElementById('lbox').scrollTop=document.getElementById('lbox').scrollHeight;
+  if(id==='upload')document.getElementById('uploadDir').textContent=curDir||'root';
+  if(id==='monitor')loadMonitor();
+  if(id==='term'){loadTerminal();_hackTimer=setInterval(loadTerminal,1500);}
+}
+
+// ── WEBSOCKET ──
+function connectWS(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  const ts=document.getElementById('tStatus');if(ts&&!_wsConnected)ts.textContent='সংযোগ...';
+  ws=new WebSocket(proto+'://'+location.host);
+  ws.onopen=()=>{_wsConnected=true;refresh();};
+  ws.onmessage=e=>{
+    try{
+      const m=JSON.parse(e.data);
+      if(m.type==='log')appendLog(m.data);
+      if(m.type==='logs'){document.getElementById('lbox').innerHTML='';m.data.forEach(appendLog);}
+      if(m.type==='status')updateBotStatus(m.running,m.starting);
+      if(m.type==='clearLogs')document.getElementById('lbox').innerHTML='';
+      if(m.type==='alert'){showAlertBanner(m.data);_alertsCache.unshift(m.data);_unreadAlerts++;updateBell();}
+      if(m.type==='mongo')updateMongo(m.connected);
+    }catch(e){}
+  };
+  ws.onerror=()=>{_wsConnected=false;};
+  ws.onclose=()=>{_wsConnected=false;setTimeout(connectWS,3000);};
+}
+
+// ── STATUS UPDATE ──
+function updateBotStatus(running,starting){
+  _botRunning=running;if(!running)_botUpSec=0;
+  const card=document.getElementById('botStateCard');
+  const icon=document.getElementById('botStateIcon');
+  const logo=document.getElementById('topLogo');
+  const sDot=document.getElementById('sDot');
+  const tDot=document.getElementById('tDot');
+  const sTxt=document.getElementById('sTxt');
+  const tStatus=document.getElementById('tStatus');
+  if(running){
+    card&&(card.className='bot-state running');
+    icon&&(icon.textContent='✅');
+    logo&&(logo.className='top-logo live');
+    [sDot,tDot].forEach(d=>{if(d){d.className='stat-dot on';}});
+    sTxt&&(sTxt.textContent='✅ বট চলছে');
+    tStatus&&(tStatus.textContent='✅ চলছে');
+  }else if(starting){
+    card&&(card.className='bot-state starting');
+    icon&&(icon.textContent='🟡');
+    logo&&(logo.className='top-logo starting');
+    [sDot,tDot].forEach(d=>{if(d){d.className='stat-dot starting';}});
+    sTxt&&(sTxt.textContent='🟡 বট চালু হচ্ছে...');
+    tStatus&&(tStatus.textContent='🟡 চালু হচ্ছে');
+  }else{
+    card&&(card.className='bot-state stopped');
+    icon&&(icon.textContent='🔴');
+    logo&&(logo.className='top-logo');
+    [sDot,tDot].forEach(d=>{if(d){d.className='stat-dot';}});
+    sTxt&&(sTxt.textContent='🔴 বট বন্ধ');
+    tStatus&&(tStatus.textContent='🔴 বন্ধ');
+  }
+}
+function updateMongo(connected){
+  const mDot=document.getElementById('mDot');
+  const mStatus=document.getElementById('mStatus');
+  const mongoPill=document.getElementById('mongoPill');
+  const mongoBadge=document.getElementById('mongoBadge');
+  const mongoInfo=document.getElementById('mongoInfo');
+  if(mongoPill)mongoPill.style.display='flex';
+  if(mDot)mDot.className='stat-dot'+(connected?' on':'');
+  if(mStatus)mStatus.textContent=connected?'DB ✅':'DB ❌';
+  if(mongoBadge){mongoBadge.textContent=connected?'✅ MongoDB সংযুক্ত':'❌ MongoDB বিচ্ছিন্ন';mongoBadge.className='mongo-status-badge'+(connected?' ok':' err');}
+  if(mongoInfo)mongoInfo.textContent=connected?'সংযুক্ত ✅':'বিচ্ছিন্ন ❌';
+}
+
+// ── REFRESH ──
+async function refresh(){
+  try{
+    const ac=new AbortController();
+    const tid=setTimeout(()=>ac.abort(),30000);
+    const [rSt,rBs]=await Promise.all([fetch('/api/stats',{signal:ac.signal}),fetch('/api/bot/status',{signal:ac.signal})]);
+    clearTimeout(tid);
+    if(rSt.status===401||rBs.status===401){location.href='/login';return;}
+    const st=await rSt.json(),bs=await rBs.json();
+    document.getElementById('cMem').textContent=st.memMB||'--';
+    document.getElementById('cSup').textContent=fmtT(st.serverUptime||0);
+    document.getElementById('cFiles').textContent=st.botFiles||0;
+    document.getElementById('cStarts').textContent=st.starts||0;
+    const cc=document.getElementById('cCrash');if(cc)cc.textContent=st.crashes||0;
+    const ct=document.getElementById('cTup');if(ct)ct.textContent=fmtT((st.totalUptime||0)+(bs.uptime||0));
+    const cn=document.getElementById('cNode');if(cn)cn.textContent=(st.node||'').replace('v','');
+    updateBotStatus(!!bs.ready,bs.running&&!bs.ready);
+    updateMongo(st.mongoConnected||false);
+    fetch('/api/cookie/status').then(r=>r.json()).then(cs=>{
+      const el=document.getElementById('cookieStatus');if(!el)return;
+      el.style.display='block';
+      if(cs.saved){el.style.cssText='display:block;background:rgba(0,245,160,.1);color:var(--gn);border-radius:8px;padding:7px 10px;font-size:12px';el.textContent='✅ Cookie সেভ করা আছে';}
+      else{el.style.cssText='display:block;background:rgba(255,85,114,.1);color:var(--rd);border-radius:8px;padding:7px 10px;font-size:12px';el.textContent='⚠️ কোনো Cookie সেভ নেই';}
+    }).catch(()=>{});
+    if(bs.running&&bs.uptime>0&&_botUpSec===0)_botUpSec=bs.uptime;
+    const hist=(st.history||[]).slice().reverse().slice(0,8);
+    const hl=document.getElementById('histList');
+    if(hl)hl.innerHTML=hist.length?hist.map(h=>'<div class="hist-row"><span class="hist-date">'+new Date(h.date).toLocaleString('bn-BD').substring(0,16)+'</span><span class="hist-up">'+fmtT(h.uptime)+'</span><span class="hist-code">'+h.code+'</span></div>').join(''):'<div style="font-size:12px;color:var(--mu);text-align:center;padding:10px">ইতিহাস নেই</div>';
+    const pgMon=document.getElementById('pg-monitor');
+    if(pgMon&&pgMon.classList.contains('active'))loadMonitor();
+    _refreshFails=0;
+  }catch(e){
+    _refreshFails++;
+    const ts=document.getElementById('tStatus');
+    if(ts)ts.textContent=_refreshFails<=3?'সংযোগ হচ্ছে...':'⚠️ retry #'+_refreshFails;
+    console.warn('[refresh #'+_refreshFails+']',e&&e.message);
+  }
+}
+
+// ── MONITOR ──
+function _mc(p){return p<60?'var(--gn)':p<85?'var(--yw)':'var(--rd)';}
+async function loadMonitor(){
+  try{
+    const d=await fetch('/api/system/live').then(r=>r.json());
+    const cap=(d.ram&&d.ram.capMB)||512;
+    const pMB=d.ram&&d.ram.panelMB!=null?d.ram.panelMB:null;
+    const bMB=d.ram&&d.ram.botMB!=null?d.ram.botMB:null;
+    const tMB=(pMB||0)+(bMB||0);
+    if(pMB!=null){const p=Math.min(100,Math.round(pMB/cap*100));document.getElementById('mPanelTxt').textContent=pMB+' MB / '+cap+' MB';document.getElementById('mPanelBar').style.cssText='width:'+p+'%;background:'+_mc(p);}
+    if(bMB!=null){const p=Math.min(100,Math.round(bMB/cap*100));document.getElementById('mBotTxt').textContent=bMB+' MB / '+cap+' MB';document.getElementById('mBotBar').style.cssText='width:'+p+'%;background:'+_mc(p);}
+    else{document.getElementById('mBotTxt').textContent='বট বন্ধ';document.getElementById('mBotBar').style.width='0%';}
+    {const p=Math.min(100,Math.round(tMB/cap*100));document.getElementById('mTotalTxt').textContent=tMB+' MB / '+cap+' MB';document.getElementById('mTotalBar').style.cssText='width:'+p+'%;background:'+_mc(p);}
+    const hr=document.getElementById('mHeavyRow');
+    if(d.heavy){hr.style.display='block';const p=Math.min(100,Math.round((d.heavy.active/d.heavy.max)*100));document.getElementById('mHeavyTxt').textContent=d.heavy.active+' / '+d.heavy.max;document.getElementById('mHeavyBar').style.width=p+'%';}
+    else hr.style.display='none';
+    if(d.mongo&&!d.mongo.error){
+      const mCap=512,used=d.mongo.totalMB||0,p=Math.min(100,Math.round(used/mCap*100));
+      document.getElementById('mMongoTxt').textContent=used+' MB / '+mCap+' MB';
+      document.getElementById('mMongoBar').style.cssText='width:'+p+'%;background:'+_mc(p);
+      document.getElementById('mMongoObjs').textContent=d.mongo.objects!=null?d.mongo.objects:'--';
+      document.getElementById('mMongoData').textContent=d.mongo.dataSizeMB!=null?d.mongo.dataSizeMB:'--';
+      document.getElementById('mMongoIdx').textContent=d.mongo.indexSizeMB!=null?d.mongo.indexSizeMB:'--';
+    }else{document.getElementById('mMongoTxt').textContent='সংযুক্ত নেই';document.getElementById('mMongoBar').style.width='0%';}
+    if(d.lifetime){
+      const lt=d.lifetime;
+      document.getElementById('mPanelPeak').textContent=(lt.peakPanelMB||0)+' MB';
+      document.getElementById('mBotPeak').textContent=(lt.peakBotMB||0)+' MB';
+      document.getElementById('mMongoPeak').textContent=(lt.peakMongoMB||0)+' MB';
+      document.getElementById('mLtStarts').textContent=(lt.totalStarts||0)+'x';
+      document.getElementById('mLtCrashes').textContent=(lt.totalCrashes||0)+'x';
+      document.getElementById('mLtUptime').textContent=_fmtLt(lt.totalUptimeSec||0);
+      document.getElementById('mLtSince').textContent=lt.firstSeen?new Date(lt.firstSeen).toLocaleDateString('bn-BD',{year:'numeric',month:'long',day:'numeric'}):'--';
+    }
+  }catch(e){}
+}
+
+// ── TERMINAL ──
+async function loadTerminal(){
+  try{
+    const d=await fetch('/api/system/terminal').then(r=>r.json());
+    document.getElementById('hkTime').textContent=new Date().toLocaleTimeString('en-GB');
+    if(d.net){
+      document.getElementById('hkRx').textContent=(d.net.rxKBs||0).toFixed(1);
+      document.getElementById('hkTx').textContent=(d.net.txKBs||0).toFixed(1);
+      document.getElementById('hkNetBar').style.width=Math.min(100,Math.round(((d.net.rxKBs||0)+(d.net.txKBs||0))/2))+'%';
+    }
+    document.getElementById('hkCpu').textContent=d.cpuPercent||0;
+    document.getElementById('hkCpuBar').style.width=(d.cpuPercent||0)+'%';
+    document.getElementById('hkRam').textContent=d.ramPercent||0;
+    document.getElementById('hkRamBar').style.width=(d.ramPercent||0)+'%';
+    if(d.uptimeSec!=null)document.getElementById('hkUptime').textContent=fmtT(d.uptimeSec);
+    const bs=document.getElementById('hkBotSt');
+    if(bs){
+      if(d.botReady){bs.textContent='ONLINE ✓';bs.style.color='#33ff66';}
+      else if(d.botRunning){bs.textContent='BOOTING...';bs.style.color='#ffd633';}
+      else{bs.textContent='OFFLINE ✕';bs.style.color='#ff4466';}
+    }
+    const tail=document.getElementById('hkTail');
+    if(tail&&d.tail)tail.innerHTML=d.tail.map(l=>'<div class="t-line t-tail-'+(l.type||'info')+'">['+l.time+'] '+esc(l.text)+'</div>').join('');
+  }catch(e){}
+}
+
+// ── LOGS ──
+function appendLog(e){
+  if(logFilter!=='all'&&e.type!==logFilter)return;
+  const box=document.getElementById('lbox');
+  const d=document.createElement('div');
+  const cls={info:'le-info',success:'le-success',error:'le-error',warn:'le-warn'}[e.type||'info']||'le-info';
+  const icon={info:'ℹ️',success:'✅',error:'❌',warn:'⚠️'}[e.type||'info']||'ℹ️';
+  d.className='log-entry '+cls;d.dataset.t=e.type||'info';
+  d.innerHTML='<span class="le-icon">'+icon+'</span><span class="le-time">'+e.time+'</span><span class="le-txt">'+esc(e.text)+'</span>';
+  box.appendChild(d);
+  if(autoScroll)box.scrollTop=box.scrollHeight;
+}
+function setLF(f,btn){logFilter=f;document.querySelectorAll('.lf-btn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.querySelectorAll('.log-entry').forEach(el=>el.style.display=(f==='all'||el.dataset.t===f)?'flex':'none');}
+function clearLogs(){fetch('/api/bot/clearlogs',{method:'POST'});}
+function toggleLogFull(){document.body.classList.toggle('log-full');}
+
+// ── ALERTS ──
+const _lvlIcon={info:'ℹ️',warn:'⚠️',error:'🔴'};
+function showAlertBanner(a){
+  const box=document.getElementById('alertBanner');
+  const d=document.createElement('div');
+  d.className='alert-item-banner '+(a.level||'info');
+  d.innerHTML='<span>'+(_lvlIcon[a.level]||'ℹ️')+'</span><div><b>'+esc(a.title)+'</b><div style="color:var(--mu);font-size:11px;margin-top:2px">'+esc(a.message)+'</div></div><button class="aib-x" onclick="this.parentElement.remove()">✕</button>';
+  box.appendChild(d);
+  setTimeout(()=>{if(d.parentElement)d.remove();},9000);
+}
+function updateBell(){
+  const b=document.getElementById('bellBadge');
+  if(_unreadAlerts>0){b.style.display='flex';b.textContent=_unreadAlerts>99?'99+':_unreadAlerts;}
+  else b.style.display='none';
+}
+function renderAlertList(){
+  const list=document.getElementById('alertList');
+  if(!_alertsCache.length){list.innerHTML='<div style="text-align:center;color:var(--mu);padding:40px;font-size:13px">🔕 কোনো নোটিফিকেশন নেই</div>';return;}
+  list.innerHTML=_alertsCache.map(a=>'<div class="alert-list-item '+(a.level||'info')+'"><div class="ali-title">'+(_lvlIcon[a.level]||'ℹ️')+' '+esc(a.title)+'</div><div style="font-size:12px;color:var(--mu)">'+esc(a.message)+'</div><div class="ali-time">'+new Date(a.time).toLocaleString('bn-BD')+'</div></div>').join('');
+}
+async function openAlerts(){
+  document.getElementById('alertDrawer').classList.add('show');
+  document.getElementById('drawerOverlay').classList.add('show');
+  _unreadAlerts=0;updateBell();
+  try{const d=await fetch('/api/alerts').then(r=>r.json());_alertsCache=d.alerts||[];}catch{}
+  renderAlertList();
+}
+function closeAlerts(){document.getElementById('alertDrawer').classList.remove('show');document.getElementById('drawerOverlay').classList.remove('show');}
+async function clearAlerts(){
+  if(!confirm('সব নোটিফিকেশন মুছবে?'))return;
+  await fetch('/api/alerts/clear',{method:'POST'});
+  _alertsCache=[];renderAlertList();
+}
+(async()=>{try{const d=await fetch('/api/alerts').then(r=>r.json());_alertsCache=d.alerts||[];}catch{}})();
+
+// ── BOT CONTROL ──
+async function botAct(a){
+  toast('⏳ '+{start:'চালু',stop:'বন্ধ',restart:'রিস্টার্ট'}[a]+'...','warn');
+  const d=await fetch('/api/bot/'+a,{method:'POST'}).then(r=>r.json());
+  toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');
+  setTimeout(refresh,2500);
+}
+async function npmInst(){toast('📦 npm install শুরু...','warn');const d=await fetch('/api/bot/install',{method:'POST'}).then(r=>r.json());toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');}
+function doBackup(){window.open('/api/backup');}
+async function mongoSync(){toast('☁️ Sync শুরু...','warn');const d=await fetch('/api/mongo/sync',{method:'POST'}).then(r=>r.json());toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');}
+async function mongoRestore(){toast('🔄 Restore শুরু...','warn');const d=await fetch('/api/mongo/restore',{method:'POST'}).then(r=>r.json());toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');if(d.ok)setTimeout(()=>loadFiles(curDir),2000);}
+async function saveCookie(){
+  const c=document.getElementById('cookieInput').value.trim();
+  if(!c)return toast('❌ Cookie লিখুন','error');
+  const d=await fetch('/api/cookie/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:c})}).then(r=>r.json());
+  toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');
+  if(d.ok){document.getElementById('cookieInput').value='';toast('🔄 বট চালু হচ্ছে...','warn');setTimeout(()=>botAct('start'),1500);}
+}
+async function doReset(){
+  if(!confirm('সব লগ ও নোটিফিকেশন মুছে ফ্রেশ করবে?'))return;
+  await fetch('/api/bot/clearlogs',{method:'POST'});
+  await fetch('/api/alerts/clear',{method:'POST'});
+  document.getElementById('lbox').innerHTML='';
+  document.getElementById('alertBanner').innerHTML='';
+  _alertsCache=[];_unreadAlerts=0;updateBell();renderAlertList();
+  toast('🔄 রিসেট হয়েছে','success');
+}
+function clearLogFile(){if(!confirm('Log file মুছবে?'))return;fetch('/api/bot/clearlogfile',{method:'POST'}).then(r=>r.json()).then(d=>toast(d.ok?'✅ মুছা হয়েছে':'❌ ব্যর্থ',d.ok?'success':'error'));}
+
+// ── FILE ICONS ──
+function ficon(n,isDir){
+  if(isDir)return'📁';
+  const e=n.split('.').pop().toLowerCase();
+  return{js:'📜',mjs:'📜',cjs:'📜',json:'📋',md:'📝',txt:'📄',env:'🔐',log:'📋',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️',mp3:'🎵',mp4:'🎬',zip:'📦',tar:'📦',gz:'📦',html:'🌐',css:'🎨',ts:'📘',py:'🐍',sh:'⚡',bat:'⚡',yml:'⚙️',yaml:'⚙️',xml:'📋',lock:'🔒'}[e]||'📄';
+}
+function fclass(n,isDir){
+  if(isDir)return'fi-dir';
+  const e=n.split('.').pop().toLowerCase();
+  if(['js','mjs','cjs','ts','py','sh','bat'].includes(e))return'fi-code';
+  if(['json','yml','yaml','xml','env','lock'].includes(e))return'fi-data';
+  if(['jpg','jpeg','png','gif','webp','mp3','mp4'].includes(e))return'fi-media';
+  if(['zip','tar','gz'].includes(e))return'fi-archive';
+  return'fi-doc';
+}
+function langExt(n){const e=n.split('.').pop().toLowerCase();return{js:'JavaScript',json:'JSON',md:'Markdown',html:'HTML',css:'CSS',py:'Python',ts:'TypeScript',sh:'Shell',env:'ENV',txt:'Text',yml:'YAML',xml:'XML'}[e]||e.toUpperCase();}
+
+// ── FILE MANAGER ──
+function buildPath(dir){
+  const bar=document.getElementById('pathBar');
+  const parts=dir?dir.split('/'):[],pb=['<span class="pp" onclick="loadFiles(\\'\\')">📁 root</span>'];
+  let acc='';
+  parts.forEach(p=>{acc+=(acc?'/':'')+p;const c=acc;pb.push('<span style="color:var(--mu)"> / </span><span class="pp" onclick="loadFiles(\\''+c+'\\')">'+p+'</span>');});
+  bar.innerHTML=pb.join('');
+}
+async function loadFiles(dir){
+  curDir=dir||'';buildPath(curDir);
+  document.getElementById('fmView').style.display='block';
+  document.getElementById('edView').style.display='none';
+  document.getElementById('fsRes').style.display='none';
+  document.getElementById('fq').value='';
+  document.getElementById('uploadDir').textContent=curDir||'root';
+  const data=await fetch('/api/files?path='+encodeURIComponent(curDir)).then(r=>r.json());
+  const nF=(data.items||[]).filter(i=>!i.isDir).length,nD=(data.items||[]).filter(i=>i.isDir).length;
+  document.getElementById('fmSummary').innerHTML='<span>📁 '+nD+' ফোল্ডার · 📄 '+nF+' ফাইল</span>';
+  const list=document.getElementById('flist');list.innerHTML='';
+  if(curDir){
+    const up=document.createElement('div');up.className='file-row';
+    up.innerHTML='<div class="file-icon fi-dir">⬆️</div><div class="file-info"><div class="file-name">.. উপরে যাও</div></div>';
+    up.onclick=()=>loadFiles(curDir.split('/').slice(0,-1).join('/'));
+    list.appendChild(up);
+  }
+  if(!(data.items&&data.items.length)){list.innerHTML='<div class="fm-empty"><div style="font-size:44px;margin-bottom:10px">📭</div><div>ফোল্ডার খালি</div></div>';return;}
+  data.items.forEach(item=>{
+    const fp=curDir?curDir+'/'+item.name:item.name;
+    const row=document.createElement('div');row.className='file-row';
+    row.innerHTML='<div class="file-icon '+fclass(item.name,item.isDir)+'">'+ficon(item.name,item.isDir)+'</div>'
+      +'<div class="file-info"><div class="file-name">'+item.name+'</div><div class="file-meta">'+fsz(item.size)+(item.mtime?' · <span data-mtime="'+item.mtime+'">'+fdt(item.mtime)+'</span>':'')+'</div></div>'
+      +'<div class="file-actions">'
+      +(!item.isDir?'<button class="fab" onclick="event.stopPropagation();editF(\\''+fp+'\\')">✏️</button>':'')
+      +(!item.isDir&&/\\.js$/i.test(item.name)?'<button class="fab" onclick="event.stopPropagation();testFile(\\''+fp+'\\')">🧪</button>':'')
+      +'<button class="fab" onclick="event.stopPropagation();dlF(\\''+fp+'\\')">⬇️</button>'
+      +'<button class="fab" onclick="event.stopPropagation();showRename(\\''+fp+'\\',\\''+item.name+'\\')">🔤</button>'
+      +'<button class="fab" onclick="event.stopPropagation();showCopy(\\''+fp+'\\')">📋</button>'
+      +'<button class="fab del" onclick="event.stopPropagation();delItem(\\''+fp+'\\',\\''+item.name+'\\')">🗑</button>'
+      +'</div>';
+    if(item.isDir)row.onclick=()=>loadFiles(fp);else row.onclick=()=>editF(fp);
+    list.appendChild(row);
+  });
+}
+
+// ── EDITOR ──
+async function editF(p){
+  const d=await fetch('/api/file/read?path='+encodeURIComponent(p)).then(r=>r.json());
+  if(d.error)return toast('❌ '+d.error,'error');
+  curEdit=p;
+  document.getElementById('edFn').textContent=p.split('/').pop();
+  document.getElementById('edLang').textContent=langExt(p);
+  document.getElementById('ced').value=d.content;
+  document.getElementById('fmView').style.display='none';
+  document.getElementById('edView').style.display='block';
+  const isHl=/\.(js|json|mjs|cjs)$/i.test(p);
+  document.getElementById('edWrap').classList.toggle('hl-active',isHl);
+  document.getElementById('ced').classList.toggle('hl-on',isHl);
+  if(isHl)renderHL();
+}
+function onEdInput(){if(document.getElementById('edWrap').classList.contains('hl-active'))renderHL();}
+function syncEdScroll(){const hl=document.getElementById('cedHl'),ta=document.getElementById('ced');hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;}
+function renderHL(){
+  const code=document.getElementById('ced').value;
+  document.querySelector('#cedHl code').innerHTML=hlJS(code);
+  syncEdScroll();
+}
+function hlJS(src){
+  let s=esc(src);const tokens=[];
+  s=s.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>{tokens.push('<span class="tok-com">'+m+'</span>');return '\u0000'+(tokens.length-1)+'\u0000';});
+  s=s.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|'(?:[^'\\]|\\.)*')/g,m=>{tokens.push('<span class="tok-str">'+m+'</span>');return '\u0000'+(tokens.length-1)+'\u0000';});
+  s=s.replace(/\b(const|let|var|function|async|await|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|class|extends|super|this|typeof|instanceof|in|of|null|undefined|true|false|import|export|default|require|module|exports|delete|void|yield|static|get|set)\b/g,'<span class="tok-kw">$1</span>');
+  s=s.replace(/\b(\d+\.?\d*)\b/g,'<span class="tok-num">$1</span>');
+  s=s.replace(/\b([a-zA-Z_$][\w$]*)(?=\s*\()/g,'<span class="tok-fn">$1</span>');
+  s=s.replace(/\u0000(\d+)\u0000/g,(_,i)=>tokens[+i]);
+  return s;
+}
+function closeEd(){document.getElementById('edView').style.display='none';document.getElementById('fmView').style.display='block';}
+async function saveFile(){
+  const d=await fetch('/api/file/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:curEdit,content:document.getElementById('ced').value})}).then(r=>r.json());
+  toast(d.ok?'✅ সেভ হয়েছে':'❌ '+d.error,d.ok?'success':'error');
+}
+function dlF(p){window.open('/api/file/download?path='+encodeURIComponent(p));}
+async function delItem(p,name){
+  if(!confirm('"'+name+'" ডিলিট করবে? MongoDB থেকেও মুছবে।'))return;
+  const d=await fetch('/api/file/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})}).then(r=>r.json());
+  toast(d.ok?'🗑 ডিলিট হয়েছে':'❌ '+d.error,d.ok?'success':'error');if(d.ok)loadFiles(curDir);
+}
+
+// ── FILE TEST ──
+async function testFile(pathOverride){
+  const target=pathOverride||curEdit;if(!target)return;
+  document.getElementById('testOverlay').classList.add('show');
+  document.getElementById('testPanel').classList.add('show');
+  document.getElementById('testBody').innerHTML='<div style="text-align:center;padding:32px;color:var(--mu)">⏳ টেস্ট চলছে...</div>';
+  try{
+    const d=await fetch('/api/file/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:target})}).then(r=>r.json());
+    if(!d.ok){document.getElementById('testBody').innerHTML='<div class="test-sec bad"><b>❌ ব্যর্থ</b><br>'+esc(d.msg||d.error||'অজানা এরর')+'</div>';return;}
+    renderTestResult(d.result);
+  }catch(e){document.getElementById('testBody').innerHTML='<div class="test-sec bad">❌ নেটওয়ার্ক এরর</div>';}
+}
+function closeTest(){document.getElementById('testOverlay').classList.remove('show');document.getElementById('testPanel').classList.remove('show');}
+function renderTestResult(r){
+  const structOk=!r.structure||r.structure.ok;
+  const depsOk=!r.dependencies||r.dependencies.every(d=>d.ok);
+  const apisOk=!r.apis||r.apis.every(a=>a.ok);
+  const allGood=r.syntax.ok&&structOk&&depsOk&&apisOk;
+  let html=allGood?'<div class="test-sec ok" style="text-align:center;font-size:14px;font-weight:800;margin-bottom:10px">✅ ফাইল সম্পূর্ণ ঠিক আছে</div>':'<div class="test-sec bad" style="text-align:center;font-size:14px;font-weight:800;margin-bottom:10px">⚠️ সমস্যা আছে</div>';
+  html+='<div class="test-sec '+(r.syntax.ok?'ok':'bad')+'"><b>'+(r.syntax.ok?'✅':'❌')+' সিনট্যাক্স</b><div style="font-size:12px;color:var(--mu);margin-top:4px">'+esc(r.syntax.msg)+'</div></div>';
+  if(r.structure)html+='<div class="test-sec '+(r.structure.ok?'ok':'bad')+'"><b>'+(r.structure.ok?'✅':'❌')+' কমান্ড স্ট্রাকচার</b><div style="font-size:12px;color:var(--mu);margin-top:4px">'+esc(r.structure.msg)+'</div></div>';
+  if(r.dependencies&&r.dependencies.length){
+    html+='<div class="test-sec '+(r.dependencies.every(d=>d.ok)?'ok':'bad')+'"><b>Dependencies</b>';
+    r.dependencies.forEach(d=>{html+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span>'+esc(d.pkg)+'</span><span style="color:'+(d.ok?'var(--gn)':'var(--rd)')+'">'+(d.ok?'✅ আছে':'❌ নেই')+'</span></div>';});
+    html+='</div>';
+  }
+  if(r.apis&&r.apis.length){
+    html+='<div class="test-sec '+(r.apis.every(a=>a.ok)?'ok':'bad')+'"><b>API লিংক</b>';
+    r.apis.forEach(a=>{html+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="word-break:break-all;flex:1;color:var(--mu)">'+esc(a.url)+'</span><span style="flex-shrink:0;margin-left:8px;color:'+(a.ok?'var(--gn)':'var(--rd)')+'">'+esc(String(a.status))+'</span></div>';});
+    html+='</div>';
+  }
+  document.getElementById('testBody').innerHTML=html;
+}
+
+// ── MODALS ──
+function showM(id){document.getElementById('mod-'+id).classList.add('open');setTimeout(()=>{const f=document.querySelector('#mod-'+id+' .modal-input');if(f)f.focus();},120);}
+function closeM(id){document.getElementById('mod-'+id).classList.remove('open');}
+async function doMkdir(){
+  const n=document.getElementById('mkN').value.trim();if(!n)return;
+  const fp=curDir?curDir+'/'+n:n;
+  const d=await fetch('/api/file/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:fp})}).then(r=>r.json());
+  closeM('mkdir');toast(d.ok?'📁 তৈরি হয়েছে':'❌ '+d.error,d.ok?'success':'error');if(d.ok)loadFiles(curDir);
+}
+async function doNewFile(){
+  const n=document.getElementById('nfN').value.trim();if(!n)return;
+  const fp=curDir?curDir+'/'+n:n;
+  const d=await fetch('/api/file/newfile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:fp,content:''})}).then(r=>r.json());
+  closeM('newfile');if(d.ok){toast('📄 তৈরি হয়েছে','success');editF(fp);}else toast('❌ '+d.error,'error');
+}
+function showRename(p,name){renameFrom=p;document.getElementById('rnV').value=name;showM('rename');}
+async function doRename(){
+  const n=document.getElementById('rnV').value.trim();if(!n)return;
+  const dir=renameFrom.includes('/')?renameFrom.split('/').slice(0,-1).join('/'):'';
+  const to=dir?dir+'/'+n:n;
+  const d=await fetch('/api/file/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:renameFrom,to})}).then(r=>r.json());
+  closeM('rename');toast(d.ok?'✅ নাম পরিবর্তন':'❌ '+d.error,d.ok?'success':'error');if(d.ok)loadFiles(curDir);
+}
+function showCopy(p){copyFrom=p;document.getElementById('cpTo').value=p+'_copy';showM('copy');}
+async function doCopy(){
+  const to=document.getElementById('cpTo').value.trim();if(!to)return;
+  const d=await fetch('/api/file/copy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:copyFrom,to})}).then(r=>r.json());
+  closeM('copy');toast(d.ok?'📋 Copy হয়েছে':'❌ '+d.error,d.ok?'success':'error');if(d.ok)loadFiles(curDir);
+}
+
+// ── FILE SEARCH ──
+let _fst;
+function doFS(){
+  const q=document.getElementById('fq').value.trim();
+  const res=document.getElementById('fsRes');
+  if(!q){res.style.display='none';return;}
+  clearTimeout(_fst);_fst=setTimeout(async()=>{
+    const d=await fetch('/api/file/search?q='+encodeURIComponent(q)).then(r=>r.json());
+    if(!(d.results&&d.results.length)){res.style.display='block';res.innerHTML='<div style="font-size:12px;color:var(--mu);padding:10px;text-align:center">📭 পাওয়া যায়নি</div>';return;}
+    res.style.display='block';
+    res.innerHTML=d.results.map(r=>'<div class="search-result" onclick="'+(r.isDir?"loadFiles('"+r.path+"')":"editF('"+r.path+"')")+'"><div class="sr-path">'+ficon(r.name,r.isDir)+' '+r.path+'</div><div class="sr-meta">'+fsz(r.size)+'</div></div>').join('');
+  },300);
+}
+
+// ── UPLOAD ──
+async function uploadF(file){
+  if(!file)return;
+  const pw=document.getElementById('progWrap'),pb=document.getElementById('progBar');
+  const pp=document.getElementById('upPct'),ps=document.getElementById('upSt'),fn=document.getElementById('upFN');
+  pw.style.display='block';fn.textContent=file.name;pb.style.width='0%';pp.textContent='0%';ps.textContent='চেক করছি...';
+  const CHUNK=50*1024,total=Math.max(1,Math.ceil(file.size/CHUNK));
+  const uid='f'+file.size+'_'+(file.lastModified||0)+'_'+file.name.replace(/[^a-zA-Z0-9]/g,'').slice(0,40);
+  const already=new Set();
+  try{const st=await fetch('/api/file/upload-status?uploadId='+encodeURIComponent(uid)).then(r=>r.json());(st.have||[]).forEach(i=>already.add(i));}catch{}
+  if(already.size>0)ps.textContent='Resume হচ্ছে ('+already.size+'/'+total+' আগে থেকেই আছে)...';
+  async function sendChunk(i){
+    const start=i*CHUNK,end=Math.min(file.size,start+CHUNK),blob=file.slice(start,end);
+    let attempt=0;
+    while(attempt<8){
+      try{
+        const fd=new FormData();fd.append('chunk',blob,'chunk');fd.append('uploadId',uid);fd.append('chunkIndex',i);fd.append('totalChunks',total);fd.append('fileName',file.name);fd.append('path',curDir||'');
+        const d=await fetch('/api/file/upload-chunk',{method:'POST',body:fd}).then(r=>r.json());
+        if(d&&d.ok!==false)return d;throw new Error(d.msg||'fail');
+      }catch(e){attempt++;ps.textContent='⚠️ চাংক '+(i+1)+'/'+total+' retry ('+attempt+'/8)...';await new Promise(r=>setTimeout(r,Math.min(1000*attempt,8000)));}
+    }
+    return null;
+  }
+  const toSend=[],done={count:already.size};
+  for(let i=0;i<total;i++)if(!already.has(i))toSend.push(i);
+  let lastResult=null,failed=false;
+  function upd(){const p=Math.round((done.count/total)*100);pb.style.width=p+'%';pp.textContent=p+'%';}
+  upd();
+  for(const i of toSend){
+    const d=await sendChunk(i);
+    if(!d){failed=true;ps.innerHTML='<span style="color:var(--rd)">❌ আপলোড থেমে গেছে — ফাইল আবার সিলেক্ট করলে resume হবে</span>';toast('❌ আপলোড ব্যর্থ','error');break;}
+    lastResult=d;done.count++;upd();ps.textContent='চাংক '+done.count+'/'+total+' পাঠানো...';
+  }
+  if(failed){document.getElementById('fInp').value='';return;}
+  if(!lastResult||!lastResult.done)lastResult=await sendChunk(total-1);
+  if(lastResult&&lastResult.done&&lastResult.processing){
+    ps.innerHTML='<span style="color:var(--yw)">⏳ '+(lastResult.msg||'প্রসেস হচ্ছে...')+'</span>';
+    let final=null;
+    for(let tries=0;tries<150;tries++){
+      await new Promise(r=>setTimeout(r,3000));
+      try{const st=await fetch('/api/file/upload-result?uploadId='+encodeURIComponent(uid)).then(r=>r.json());if(st.status==='done'){final=st;break;}}catch{}
+    }
+    if(final){
+      if(final.ok){ps.innerHTML='<span style="color:var(--gn)">✅ '+(final.msg||'সম্পন্ন')+'</span>';toast('✅ '+(final.msg||'সম্পন্ন'),'success');}
+      else{ps.innerHTML='<span style="color:var(--rd)">❌ '+(final.msg||'ব্যর্থ')+'</span>';toast('❌ '+(final.msg||'ব্যর্থ'),'error');}
+    }else{ps.innerHTML='<span style="color:var(--rd)">⚠️ ফলাফল জানা যায়নি — লগ/ফাইল ট্যাবে চেক করো</span>';}
+  }else if(lastResult&&lastResult.done){
+    if(lastResult.ok){ps.innerHTML='<span style="color:var(--gn)">✅ '+(lastResult.msg||'সম্পন্ন')+'</span>';toast('✅ '+(lastResult.msg||'সম্পন্ন'),'success');}
+    else{ps.innerHTML='<span style="color:var(--rd)">❌ '+(lastResult.msg||'ব্যর্থ')+'</span>';toast('❌ '+(lastResult.msg||'ব্যর্থ'),'error');}
+  }
+  document.getElementById('fInp').value='';
+}
+async function uploadSingle(file){
+  if(!file)return;const st=document.getElementById('singleStatus');st.textContent='⏳ আপলোড হচ্ছে...';
+  const fd=new FormData();fd.append('file',file);fd.append('path',curDir||'');
+  const d=await fetch('/api/file/upload',{method:'POST',body:fd}).then(r=>r.json());
+  st.innerHTML=d.ok?'<span style="color:var(--gn)">✅ '+d.msg+'</span>':'<span style="color:var(--rd)">❌ '+d.error+'</span>';
+  toast(d.ok?'✅ '+d.msg:'❌ '+d.error,d.ok?'success':'error');document.getElementById('singleInp').value='';
+}
+async function uploadMulti(files){
+  if(!files||!files.length)return;const st=document.getElementById('multiStatus');st.textContent='⏳ '+files.length+'টা আপলোড হচ্ছে...';
+  const fd=new FormData();for(const f of files)fd.append('files',f);fd.append('path',curDir||'');
+  const d=await fetch('/api/file/upload-multi',{method:'POST',body:fd}).then(r=>r.json());
+  st.innerHTML=d.ok?'<span style="color:var(--gn)">✅ '+d.msg+'</span>':'<span style="color:var(--rd)">❌ '+d.error+'</span>';
+  toast(d.ok?'✅ '+d.msg:'❌ '+d.error,d.ok?'success':'error');document.getElementById('multiInp').value='';
+}
+const uz=document.getElementById('upZone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag');});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');uploadF(e.dataTransfer.files[0]);});
+
+// ── ENV ──
+async function loadEnv(){const d=await fetch('/api/env').then(r=>r.json());document.getElementById('envEd').value=d.content||'';}
+async function saveEnv(){const d=await fetch('/api/env/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:document.getElementById('envEd').value})}).then(r=>r.json());toast(d.ok?'✅ .env সেভ + MongoDB':'❌ '+d.msg,d.ok?'success':'error');}
+
+// ── SETTINGS ──
+async function loadSettings(){
+  const d=await fetch('/api/settings').then(r=>r.json());
+  document.getElementById('sName').value=d.panelName||'';
+  document.getElementById('sSiteUrl').value=d.siteUrl||location.origin;
+  document.getElementById('sAR').checked=d.autoRestart||false;
+  document.getElementById('sSched').checked=d.scheduleRestart||false;
+  document.getElementById('sTime').value=d.scheduleTime||'03:00';
+}
+async function saveSettings(){
+  const body={panelName:document.getElementById('sName').value,siteUrl:document.getElementById('sSiteUrl').value,autoRestart:document.getElementById('sAR').checked,scheduleRestart:document.getElementById('sSched').checked,scheduleTime:document.getElementById('sTime').value};
+  const d=await fetch('/api/settings/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+  toast(d.ok?'✅ সেভ হয়েছে':'❌ ব্যর্থ',d.ok?'success':'error');
+}
+async function changePw(){
+  const d=await fetch('/api/settings/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current:document.getElementById('sCur').value,newPass:document.getElementById('sNew').value})}).then(r=>r.json());
+  toast(d.ok?'✅ '+d.msg:'❌ '+d.msg,d.ok?'success':'error');
+  if(d.ok){document.getElementById('sCur').value='';document.getElementById('sNew').value='';}
+}
+
+// ── KEYBOARD ──
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'&&curEdit){e.preventDefault();saveFile();}
+  if(e.key==='Escape'){document.querySelectorAll('.overlay.open').forEach(m=>m.classList.remove('open'));closeAlerts();closeTest();}
+});
+
+// ── INIT ──
+connectWS();
+setTimeout(()=>{if(_refreshFails>0||!_wsConnected)refresh();},12000);
+setInterval(refresh,15000);
+</script>
+</body></html>`;
+}
+
+// ── WebSocket handler ──
 wss.on("connection",ws=>{
   ws.send(JSON.stringify({type:"status",running:!!botProc}));
   ws.send(JSON.stringify({type:"logs",data:botLogs}));
@@ -1186,1471 +2850,20 @@ wss.on("connection",ws=>{
 
 // ── START ──
 server.listen(PORT,()=>{
-  console.log("Panel: http://localhost:"+PORT);
+  console.log("Panel v2: http://localhost:"+PORT);
   if(process.env.RENDER_EXTERNAL_URL&&!cfg.siteUrl){
     cfg.siteUrl=process.env.RENDER_EXTERNAL_URL;
     saveJ(CFG,cfg);
   }
-  // MongoDB connect
   try{
     require.resolve("mongoose");
     connectMongo();
   }catch{
-    console.log("⚠️ mongoose not installed — running without MongoDB");
-    console.log("📦 Installing mongoose...");
+    console.log("⚠️ mongoose not installed — installing...");
     try{
+      const {execSync}=require("child_process");
       execSync("npm install mongoose",{timeout:60000});
       connectMongo();
     }catch(e){console.log("mongoose install failed:",e.message);}
   }
 });
-
-// ════════════════ HTML ════════════════
-function loginHTML(){return `<!DOCTYPE html><html lang="bn"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bot Panel</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#07070e;font-family:'Segoe UI',sans-serif;overflow:hidden}
-.bg{position:fixed;inset:0}
-.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.18;animation:fl 8s ease-in-out infinite}
-.o1{width:500px;height:500px;background:#6c63ff;top:-150px;left:-150px}
-.o2{width:350px;height:350px;background:#ff6584;bottom:-100px;right:-100px;animation-delay:4s}
-.o3{width:200px;height:200px;background:#43e97b;top:40%;left:45%;animation-delay:2s}
-@keyframes fl{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
-.card{position:relative;z-index:1;background:rgba(255,255,255,.04);backdrop-filter:blur(40px);border:1px solid rgba(255,255,255,.08);border-radius:28px;padding:52px 40px;width:90%;max-width:400px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)}
-.logo{width:90px;height:90px;margin:0 auto 22px;background:linear-gradient(135deg,#6c63ff,#ff6584);border-radius:26px;display:flex;align-items:center;justify-content:center;font-size:40px;box-shadow:0 0 60px rgba(108,99,255,.5);animation:pulse 3s ease-in-out infinite}
-@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(108,99,255,.4)}50%{box-shadow:0 0 90px rgba(108,99,255,.9)}}
-h1{color:#fff;font-size:24px;font-weight:900;margin-bottom:4px}
-.sub{color:rgba(255,255,255,.3);font-size:13px;margin-bottom:36px}
-input{width:100%;padding:15px 18px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:15px;outline:none;margin-bottom:14px;transition:.3s}
-input:focus{border-color:#6c63ff;background:rgba(108,99,255,.1)}
-.btn{width:100%;padding:15px;border-radius:14px;border:none;background:linear-gradient(135deg,#6c63ff,#ff6584);color:#fff;font-size:16px;font-weight:800;cursor:pointer;transition:.3s}
-.btn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(108,99,255,.5)}
-.err{background:rgba(255,85,85,.1);border:1px solid rgba(255,85,85,.2);color:#ff8080;padding:11px;border-radius:10px;font-size:13px;margin-bottom:14px;display:none}
-.err.show{display:block}
-</style></head><body>
-<div class="bg"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
-<div class="card">
-  <div class="logo"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px"><rect x="4" y="8" width="16" height="12" rx="3" fill="#fff" fill-opacity=".95"/><circle cx="9" cy="14" r="1.6" fill="#6C63FF"/><circle cx="15" cy="14" r="1.6" fill="#6C63FF"/><rect x="10.2" y="17" width="3.6" height="1.3" rx=".65" fill="#6C63FF"/><line x1="12" y1="4" x2="12" y2="8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="3.2" r="1.5" fill="#fff"/><rect x="1.8" y="12" width="2" height="4" rx="1" fill="#fff" fill-opacity=".8"/><rect x="20.2" y="12" width="2" height="4" rx="1" fill="#fff" fill-opacity=".8"/></svg></div>
-  <h1>Bot Panel</h1>
-  <p class="sub">তোমার বট কন্ট্রোল সেন্টার</p>
-  <div class="err" id="err"></div>
-  <input type="password" id="pw" placeholder="🔐 পাসওয়ার্ড লিখুন" autofocus>
-  <button class="btn" onclick="login()">প্রবেশ করুন →</button>
-</div>
-<script>
-async function login(){
-  const r=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"password="+encodeURIComponent(document.getElementById("pw").value)});
-  const d=await r.json();
-  if(d.ok)location.href="/";
-  else{const e=document.getElementById("err");e.textContent=d.msg;e.classList.add("show");}
-}
-document.getElementById("pw").addEventListener("keydown",e=>e.key==="Enter"&&login());
-</script></body></html>`;}
-
-function mainHTML(){
-const pname=cfg.panelName||"Bot Panel";
-const BUILD_VER="2026-07-25-v1"; // ── প্রতিবার নতুন কোড দেওয়ার সময় এই নম্বর বদলে দেওয়া হয় — "আরো" ট্যাবে দেখা যাবে, cache বাসি কিনা যাচাই করতে সাহায্য করবে
-return `<!DOCTYPE html><html lang="bn"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#07070e">
-<title>${pname}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{--bg:#07070e;--s1:#0d0d18;--s2:#141424;--s3:#1a1a2e;--bd:#232338;--tx:#dde0f0;--mu:#5a5a80;--ac:#6c63ff;--gr:#3ecf8e;--rd:#f05252;--yw:#f0b429;--bl:#38bdf8;--or:#fb923c}
-body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
-.top{position:fixed;top:0;left:0;right:0;height:54px;background:rgba(13,13,24,.97);backdrop-filter:blur(20px);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 14px;z-index:200;gap:10px}
-.top-logo{width:34px;height:34px;background:linear-gradient(135deg,var(--ac),#ff6584);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;box-shadow:0 0 20px rgba(108,99,255,.4);transition:box-shadow .4s}
-.top-logo svg{width:20px;height:20px;filter:drop-shadow(0 0 2px rgba(255,255,255,.4))}
-.top-logo.live{animation:logoPulse 1.8s ease-in-out infinite}
-.top-logo.starting{animation:logoPulse 0.8s ease-in-out infinite;filter:hue-rotate(60deg)}
-@keyframes logoPulse{
-  0%,100%{box-shadow:0 0 20px rgba(108,99,255,.4),0 0 0 0 rgba(46,213,115,.5)}
-  50%{box-shadow:0 0 28px rgba(108,99,255,.7),0 0 0 8px rgba(46,213,115,0)}
-}
-.top-name{font-size:15px;font-weight:800;color:#fff;flex:1}
-.top-pills{display:flex;align-items:center;gap:6px}
-.top-pill{display:flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--bd);border-radius:99px;padding:4px 10px;font-size:11px}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--rd);flex-shrink:0;transition:.3s}
-.dot.on{background:var(--gr);box-shadow:0 0 8px var(--gr);animation:blink 2s infinite}
-.dot.starting{background:var(--yw);box-shadow:0 0 8px var(--yw);animation:blink 1s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-.top-out{padding:6px 10px;border-radius:8px;border:1px solid rgba(240,82,82,.3);background:transparent;color:var(--rd);font-size:11px;cursor:pointer}
-
-.bell-btn{position:relative;background:transparent;border:1px solid var(--bd);border-radius:9px;padding:5px 9px;font-size:15px;cursor:pointer;color:var(--tx)}
-.bell-badge{position:absolute;top:-5px;right:-5px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-
-.alert-banner{position:fixed;top:58px;left:8px;right:8px;z-index:500;display:flex;flex-direction:column;gap:6px;pointer-events:none}
-.alert-banner-item{pointer-events:auto;background:var(--s2);border:1px solid var(--bd);border-left:4px solid var(--bl);border-radius:10px;padding:10px 12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:alertSlide .3s ease;display:flex;gap:8px;align-items:flex-start}
-.alert-banner-item.error{border-left-color:var(--rd)}
-.alert-banner-item.warn{border-left-color:var(--yw)}
-.alert-banner-item.info{border-left-color:var(--bl)}
-.alert-banner-item .ab-x{margin-left:auto;cursor:pointer;color:var(--mu);font-size:14px;flex-shrink:0}
-@keyframes alertSlide{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
-
-.alert-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600}
-.alert-overlay.show{display:block}
-.alert-drawer{position:fixed;top:0;right:-100%;width:min(420px,92vw);height:100%;background:var(--s1);z-index:601;transition:right .25s ease;box-shadow:-10px 0 40px rgba(0,0,0,.5);display:flex;flex-direction:column}
-.alert-drawer.show{right:0}
-.alert-drawer-head{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--bd)}
-.alert-list{flex:1;overflow-y:auto;padding:10px}
-.alert-item{background:var(--s2);border-left:3px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px}
-.alert-item.error{border-left-color:var(--rd)}
-.alert-item.warn{border-left-color:var(--yw)}
-.alert-item.info{border-left-color:var(--bl)}
-.alert-item-title{font-weight:700;margin-bottom:3px}
-.alert-item-time{font-size:10px;color:var(--mu);margin-top:4px}
-.alert-empty{text-align:center;color:var(--mu);padding:40px 20px;font-size:13px}
-
-.test-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700}
-.test-overlay.show{display:block}
-.test-panel{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,92vw);max-height:80vh;background:var(--s1);border:1px solid var(--bd);border-radius:16px;z-index:701;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
-.test-panel.show{display:flex}
-.test-head{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--bd)}
-.test-body{flex:1;overflow-y:auto;padding:14px}
-.test-sec{background:var(--s2);border-radius:10px;padding:12px;margin-bottom:10px;border-left:3px solid var(--bd)}
-.test-sec.ok{border-left-color:var(--gr)}
-.test-sec.bad{border-left-color:var(--rd)}
-.test-sec-title{font-weight:700;font-size:12.5px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
-.test-sec-msg{font-size:12px;color:var(--mu);word-break:break-word}
-.test-api-row{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-.test-api-url{color:var(--mu);word-break:break-all;flex:1}
-.test-api-status{flex-shrink:0;font-weight:700}
-.test-api-status.ok{color:var(--gr)}
-.test-api-status.bad{color:var(--rd)}
-
-body.log-fullscreen .top,body.log-fullscreen .tabs,body.log-fullscreen .alert-banner{display:none !important}
-body.log-fullscreen .main{padding:0;margin:0;max-width:100%}
-body.log-fullscreen #pg-logs{padding:0}
-body.log-fullscreen .lbox{position:fixed;inset:0;height:100vh;border-radius:0;border:none;background:#000;font-size:13px;padding:10px 10px 50px 10px;z-index:300}
-body.log-fullscreen .log-bar{position:fixed;bottom:0;left:0;right:0;z-index:301;background:rgba(5,5,10,.97);backdrop-filter:blur(10px);padding:8px;margin:0;border-top:1px solid #1a3a1a}
-.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(13,13,24,.97);backdrop-filter:blur(20px);border-top:1px solid var(--bd);display:grid;grid-template-columns:repeat(7,1fr);height:60px;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
-.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border:none;background:transparent;color:var(--mu);transition:.15s;position:relative}
-.tab.active{color:var(--ac)}
-.tab .ti{font-size:19px;line-height:1}
-.tab .tl{font-size:8px;font-weight:700}
-.tab::after{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:0;height:2px;background:var(--ac);border-radius:0 0 3px 3px;transition:.2s}
-.tab.active::after{width:40px}
-.main{padding:66px 12px 72px;min-height:100vh}
-.page{display:none}.page.active{display:block}
-.pg-title{font-size:15px;font-weight:800;color:#fff;margin-bottom:12px}
-.sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-.sg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
-.sc{background:linear-gradient(135deg,var(--s2),var(--s3));border:1px solid var(--bd);border-radius:14px;padding:14px;transition:.2s}
-.sc:hover{border-color:var(--ac)}
-.sc-i{font-size:24px;margin-bottom:6px}
-.sc-v{font-size:20px;font-weight:900;color:#fff}
-.sc-l{font-size:10px;color:var(--mu);margin-top:2px}
-.bc{background:var(--s2);border:1px solid var(--bd);border-radius:16px;padding:14px;margin-bottom:12px}
-.bst{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;background:var(--s3);border-radius:12px}
-.bst-txt{font-size:14px;font-weight:700}
-.bst-up{font-size:11px;color:var(--mu);margin-top:2px}
-.bg2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.bg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
-.mon-card{background:linear-gradient(135deg,var(--s2),var(--s3));border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:14px}
-.mon-head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#fff;margin-bottom:12px}
-.mon-row{margin-bottom:14px}
-.mon-row:last-child{margin-bottom:0}
-.mon-row-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:6px}
-.mon-row-label{color:var(--tx);font-weight:600}
-.mon-row-val{color:var(--mu);font-variant-numeric:tabular-nums}
-.mbar{height:10px;border-radius:6px;background:var(--s1);border:1px solid var(--bd);overflow:hidden}
-.mbar-fill{height:100%;border-radius:6px;transition:width .5s ease,background .5s ease}
-.mon-note{font-size:10px;color:var(--mu);margin-top:10px;line-height:1.5}
-.mon-peak{font-size:10px;color:var(--mu);margin-top:5px;display:flex;justify-content:flex-end;gap:4px}
-.mon-peak b{color:var(--bl);font-weight:700}
-.mon-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;margin-left:6px;font-weight:700}
-.mon-badge.ok{background:rgba(62,207,142,.15);color:var(--gr)}
-.mon-badge.warn{background:rgba(240,180,41,.15);color:var(--yw)}
-.mon-badge.err{background:rgba(240,82,82,.15);color:var(--rd)}
-.mon-badge.off{background:rgba(90,90,128,.2);color:var(--mu)}
-
-/* ── HACKING-STYLE TERMINAL VIEW ── */
-.hack-term{background:#000;border:1px solid #1a3a1a;border-radius:12px;overflow:hidden;box-shadow:0 0 30px rgba(0,255,100,.08),inset 0 0 60px rgba(0,255,100,.03)}
-.hack-topbar{background:#0a0f0a;padding:8px 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #1a3a1a}
-.hack-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-.hack-dot.r{background:#ff5f56}.hack-dot.y{background:#ffbd2e}.hack-dot.g{background:#27c93f}
-.hack-title{margin-left:8px;font-family:'Courier New',monospace;font-size:11px;color:#5a8a5a}
-.hack-body{padding:16px;font-family:'Courier New',monospace;font-size:13px;line-height:2;color:#33ff66;text-shadow:0 0 6px rgba(51,255,102,.5)}
-.hack-line{white-space:normal;word-break:break-word}
-.hack-line b{color:#7fffb0;text-shadow:0 0 8px rgba(127,255,176,.7)}
-.hack-dim{color:#2a6a3a;text-shadow:none;font-size:11px}
-.hack-cmd{color:#9fffc0}
-.hack-cursor{display:inline-block;animation:hcblink 1s step-end infinite;color:#33ff66}
-@keyframes hcblink{0%,50%{opacity:1}51%,100%{opacity:0}}
-.hack-sep{border-top:1px dashed #1a3a1a;margin:10px 0}
-.hack-bar-row{margin:2px 0 12px}
-.hack-bar{height:8px;background:#0a1a0a;border:1px solid #1a3a1a;border-radius:2px;overflow:hidden}
-.hack-bar-fill{height:100%;transition:width .6s ease;box-shadow:0 0 10px currentColor}
-.hack-bar-fill.net{background:#33ffee;color:#33ffee}
-.hack-bar-fill.cpu{background:#ffd633;color:#ffd633}
-.hack-bar-fill.ram{background:#ff5566;color:#ff5566}
-.hack-blink-ok{color:#33ff66;animation:hcpulse 1.5s ease-in-out infinite}
-.hack-blink-bad{color:#ff5566 !important;text-shadow:0 0 8px rgba(255,85,102,.7) !important;animation:hcpulse 0.8s ease-in-out infinite}
-@keyframes hcpulse{0%,100%{opacity:1}50%{opacity:.5}}
-.hack-ok{color:#7fffb0;text-shadow:0 0 6px rgba(127,255,176,.6)}
-.hack-tail-info{color:#5fae7a}
-.hack-tail-success{color:#7fffb0}
-.hack-tail-error{color:#ff8080}
-.hack-tail-warn{color:#ffd633}
-.hack-glitch{position:relative;font-size:20px;font-weight:900;letter-spacing:2px;color:#33ff66;text-shadow:0 0 10px rgba(51,255,102,.7);margin-bottom:10px;animation:hglitch 3.5s infinite}
-.hack-glitch::before,.hack-glitch::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;overflow:hidden}
-.hack-glitch::before{color:#ff33aa;animation:hglitch1 2.5s infinite;clip-path:inset(0 0 60% 0)}
-.hack-glitch::after{color:#33ccff;animation:hglitch2 3s infinite;clip-path:inset(60% 0 0 0)}
-@keyframes hglitch{0%,93%,100%{transform:translate(0)}94%{transform:translate(-2px,1px)}96%{transform:translate(2px,-1px)}}
-@keyframes hglitch1{0%,93%,100%{transform:translate(0)}94%{transform:translate(2px,-1px)}96%{transform:translate(-2px,1px)}}
-@keyframes hglitch2{0%,93%,100%{transform:translate(0)}94%{transform:translate(-3px,0)}96%{transform:translate(3px,0)}}
-.btn{width:100%;padding:11px 8px;border-radius:12px;border:none;font-size:12px;font-weight:700;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:5px}
-.btn:active{transform:scale(.96)}
-.b-start{background:linear-gradient(135deg,#3ecf8e,#22d3ee);color:#000}
-.b-stop{background:linear-gradient(135deg,#f05252,#fb7185);color:#fff}
-.b-restart{background:linear-gradient(135deg,#f0b429,#fb923c);color:#000}
-.b-npm{background:linear-gradient(135deg,#38bdf8,#6c63ff);color:#fff}
-.b-backup{background:linear-gradient(135deg,#a78bfa,#ec4899);color:#fff}
-.b-ghost{background:transparent;border:1px solid var(--bd);color:var(--tx)}
-.b-green{background:linear-gradient(135deg,#3ecf8e,#10b981);color:#000}
-.tog-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--bd);margin-top:8px}
-.tog{position:relative;width:44px;height:24px;flex-shrink:0}
-.tog input{display:none}
-.tog-bg{position:absolute;inset:0;background:var(--bd);border-radius:99px;cursor:pointer;transition:.3s}
-.tog input:checked+.tog-bg{background:var(--gr)}
-.tog-dot{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.3s;pointer-events:none}
-.tog input:checked~.tog-dot{transform:translateX(20px)}
-.mongo-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid var(--bd);background:var(--s3)}
-.mongo-badge.ok{border-color:rgba(62,207,142,.3);color:var(--gr)}
-.mongo-badge.err{border-color:rgba(240,82,82,.3);color:var(--rd)}
-.cookie-box{background:var(--s2);border:1px solid var(--bd);border-radius:16px;padding:14px;margin-bottom:12px}
-textarea.ci{width:100%;height:80px;background:var(--s3);border:1px solid var(--bd);border-radius:10px;padding:10px;color:var(--tx);font-family:'Courier New',monospace;font-size:11px;resize:none;outline:none;transition:.2s;line-height:1.5;margin:10px 0}
-textarea.ci:focus{border-color:var(--ac)}
-.hist{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto}
-.hi{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;border:1px solid var(--bd);font-size:10px}
-.hi-date{color:var(--mu);flex:1}
-.hi-up{color:var(--gr);font-weight:700}
-.hi-code{color:var(--yw)}
-.log-bar{display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px}
-.log-bar::-webkit-scrollbar{display:none}
-.lf{padding:5px 10px;border-radius:7px;border:1px solid var(--bd);background:transparent;color:var(--mu);font-size:11px;cursor:pointer;white-space:nowrap;transition:.15s}
-.lf.on{background:var(--ac);color:#fff;border-color:var(--ac)}
-.lbox{background:#0a0a12;border:1px solid var(--bd);border-radius:12px;padding:8px;height:calc(100vh - 210px);overflow-y:auto;font-family:'Courier New',monospace;font-size:11.5px}
-.le{display:flex;gap:7px;align-items:flex-start;padding:7px 8px;margin-bottom:4px;border-radius:8px;background:var(--s1);border-left:3px solid var(--bd);transition:.15s}
-.l-ic{flex-shrink:0;font-size:12px;line-height:1.5}
-.lt{color:var(--mu);white-space:nowrap;font-size:9.5px;flex-shrink:0;padding-top:2px;opacity:.75}
-.lx{word-break:normal;overflow-wrap:anywhere;line-height:1.55}
-.li{border-left-color:#3a4a6a}.li .lx{color:#9ca3af}
-.ls{border-left-color:var(--gr);background:rgba(62,207,142,.06)}.ls .lx{color:#7fe8ba}
-.lr{border-left-color:var(--rd);background:rgba(240,82,82,.08)}.lr .lx{color:#ff9b9b}
-.lw{border-left-color:var(--yw);background:rgba(240,180,41,.07)}.lw .lx{color:#ffd980}
-.lbox::-webkit-scrollbar{width:3px}
-.lbox::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
-.pathbar{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--mu);margin-bottom:10px;overflow-x:auto;white-space:nowrap;display:flex;align-items:center;gap:4px}
-.pathbar::-webkit-scrollbar{display:none}
-.pp{color:var(--ac);cursor:pointer;font-weight:600}.pp:hover{text-decoration:underline}
-.fm-acts{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-.tbtn{padding:7px 12px;border-radius:9px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);font-size:12px;cursor:pointer;white-space:nowrap;transition:.15s;display:inline-flex;align-items:center;gap:4px}
-.tbtn:hover{background:var(--s3)}
-.tbtn.p{background:var(--ac);border-color:var(--ac);color:#fff}
-.tbtn.d{border-color:rgba(240,82,82,.3);color:var(--rd)}
-.sinput{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);font-size:13px;outline:none;margin-bottom:10px;transition:.2s}
-.sinput:focus{border-color:var(--ac)}
-.flist{background:transparent;border:none;overflow:visible;display:flex;flex-direction:column;gap:7px}
-.frow{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:13px;cursor:pointer;transition:.15s;background:linear-gradient(135deg,var(--s2),var(--s1));border:1px solid var(--bd)}
-.frow:active{transform:scale(.98);border-color:var(--ac)}
-.fi{font-size:17px;flex-shrink:0;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3)}
-.fi.ft-code{background:rgba(255,123,114,.15)}
-.fi.ft-data{background:rgba(121,192,255,.15)}
-.fi.ft-media{background:rgba(210,168,255,.15)}
-.fi.ft-doc{background:rgba(126,231,135,.15)}
-.fi.ft-archive{background:rgba(240,180,41,.15)}
-.fi.ft-dir{background:rgba(108,99,255,.18)}
-.fn{flex:1;overflow:hidden}
-.fn-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.fn-meta{font-size:10px;color:var(--mu);margin-top:3px}
-.fa{display:flex;gap:3px;flex-shrink:0}
-.fab{padding:6px 8px;border-radius:8px;border:none;background:var(--s3);color:var(--mu);font-size:11px;cursor:pointer;transition:.12s}
-.fab:hover{background:var(--bd);color:var(--tx)}
-.fab.del:hover{background:rgba(240,82,82,.15);color:var(--rd)}
-.fm-summary{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mu);padding:2px 4px 10px}
-.empty-fm{padding:40px;text-align:center;color:var(--mu)}
-.ed-top{background:var(--s2);border:1px solid var(--bd);border-radius:12px 12px 0 0;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ed-fn{flex:1;font-size:12px;color:var(--ac);font-weight:700;overflow:hidden;text-overflow:ellipsis}
-.ed-lang{font-size:10px;color:var(--mu);background:var(--s3);padding:2px 7px;border-radius:5px}
-#ced{width:100%;height:calc(100vh - 240px);background:#010108;border:1px solid var(--bd);border-top:none;border-radius:0 0 12px 12px;padding:14px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;resize:none;outline:none;tab-size:2}
-.ed-wrap{position:relative}
-.ed-wrap #ced.hl-on{color:transparent;caret-color:#e6edf3;background:transparent;position:relative;z-index:1}
-.ed-hl{position:absolute;top:0;left:0;width:100%;height:calc(100vh - 240px);margin:0;padding:14px;background:#010108;border:1px solid var(--bd);border-top:none;border-radius:0 0 12px 12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;overflow:hidden;pointer-events:none;z-index:0;display:none;tab-size:2}
-.ed-wrap.hl-active .ed-hl{display:block}
-.tok-kw{color:#ff7b72}
-.tok-str{color:#a5d6ff}
-.tok-num{color:#79c0ff}
-.tok-com{color:#8b949e;font-style:italic}
-.tok-fn{color:#d2a8ff}
-.tok-punc{color:#e6edf3}
-.tok-prop{color:#79c0ff}
-.upzone{border:2px dashed var(--bd);border-radius:16px;padding:40px 16px;text-align:center;cursor:pointer;background:var(--s2);transition:.3s;margin-bottom:12px}
-.upzone:active,.upzone.drag{border-color:var(--ac);background:rgba(108,99,255,.05)}
-.uz-i{font-size:48px;margin-bottom:12px;animation:bounce 2s ease-in-out infinite}
-@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-.prog-wrap{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:14px;display:none;margin-bottom:12px}
-.prog-top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px}
-.prog-bg{background:var(--bd);border-radius:99px;height:7px;overflow:hidden}
-.prog{height:100%;background:linear-gradient(90deg,var(--ac),var(--gr));border-radius:99px;transition:width .2s;width:0}
-#envEd{width:100%;height:250px;background:#010108;border:1px solid var(--bd);border-radius:10px;padding:12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;line-height:1.8;resize:vertical;outline:none;margin-bottom:10px;transition:.2s}
-#envEd:focus{border-color:var(--ac)}
-.set-card{background:var(--s2);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
-.owner-card{background:linear-gradient(135deg,#1a1530,#241a3d);border:1px solid #4a3a7a}
-.owner-crown{text-align:center;font-weight:800;font-size:13px;color:#e0c14a;text-shadow:0 0 10px rgba(224,193,74,.4);margin-bottom:12px;letter-spacing:.5px}
-.owner-row{display:flex;justify-content:space-between;padding:6px 2px;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.05)}
-.owner-k{color:var(--mu)}
-.owner-v{color:var(--tx);font-weight:600;text-align:right}
-.owner-sep{text-align:center;font-size:10px;color:#8a7ab8;margin:12px 0 8px;letter-spacing:1px;text-transform:uppercase}
-.set-title{font-size:13px;font-weight:700;color:#fff;margin-bottom:12px}
-.set-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:8px}
-.set-row:last-child{border-bottom:none;padding-bottom:0}
-.sr-l{font-size:13px;flex:1}.sr-s{font-size:10px;color:var(--mu);margin-top:2px}
-.sinp{padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s1);color:var(--tx);font-size:12px;outline:none;max-width:170px;transition:.2s}
-.sinp:focus{border-color:var(--ac)}
-.mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;align-items:flex-end;justify-content:center;backdrop-filter:blur(6px)}
-.mbg.open{display:flex}
-.modal{background:var(--s2);border:1px solid var(--bd);border-radius:20px 20px 0 0;padding:22px;width:100%;max-width:520px;animation:mIn .25s ease;padding-bottom:max(22px,env(safe-area-inset-bottom))}
-@keyframes mIn{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.modal h3{font-size:15px;font-weight:800;margin-bottom:14px;color:#fff;text-align:center}
-.modal input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--bd);background:var(--s1);color:var(--tx);font-size:14px;outline:none;margin-bottom:12px;transition:.2s}
-.modal input:focus{border-color:var(--ac)}
-.modal-btns{display:flex;gap:8px}
-.tw{position:fixed;top:62px;right:12px;display:flex;flex-direction:column;gap:6px;z-index:999;pointer-events:none;max-width:260px}
-.toast{background:var(--s3);border-radius:10px;padding:10px 14px;font-size:12px;animation:tIn .3s ease;box-shadow:0 8px 24px rgba(0,0,0,.5);pointer-events:auto;border-left:3px solid var(--bd)}
-@keyframes tIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
-.toast.success{border-left-color:var(--gr);color:var(--gr)}
-.toast.error{border-left-color:var(--rd);color:var(--rd)}
-.toast.warn{border-left-color:var(--yw);color:var(--yw)}
-.srow{padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;margin-bottom:6px;cursor:pointer;transition:.12s}
-.srow:active{background:var(--s3)}
-.srow-p{font-size:11px;color:var(--ac);margin-bottom:2px;font-weight:600}
-.srow-m{font-size:11px;color:var(--mu)}
-.multi-upload-area{border:1px dashed var(--bd);border-radius:12px;padding:16px;background:var(--s2);margin-bottom:12px}
-</style></head><body>
-
-<div class="top">
-  <div class="top-logo" id="topLogo"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="16" height="12" rx="3" fill="#fff" fill-opacity=".95"/><circle cx="9" cy="14" r="1.6" fill="#6C63FF"/><circle cx="15" cy="14" r="1.6" fill="#6C63FF"/><rect x="10.2" y="17" width="3.6" height="1.3" rx=".65" fill="#6C63FF"/><line x1="12" y1="4" x2="12" y2="8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="3.2" r="1.5" fill="#fff"/><rect x="1.8" y="12" width="2" height="4" rx="1" fill="#fff" fill-opacity=".8"/><rect x="20.2" y="12" width="2" height="4" rx="1" fill="#fff" fill-opacity=".8"/></svg></div>
-  <div class="top-name">${pname}</div>
-  <div class="top-pills">
-    <div class="top-pill"><div class="dot" id="tDot"></div><span id="tStatus">লোড...</span></div>
-    <div class="top-pill" id="mongoPill"><div class="dot" id="mongoDot"></div><span id="mongoStatus">DB</span></div>
-  </div>
-  <button class="bell-btn" onclick="openAlerts()">🔔<span class="bell-badge" id="bellBadge" style="display:none">0</span></button>
-  <button class="bell-btn" onclick="doReset()" title="পুরনো লগ/নোটিফিকেশন মুছে ফ্রেশ করো">🔄</button>
-  <button class="top-out" onclick="location.href='/logout'">বের</button>
-</div>
-
-<div id="alertBanner" class="alert-banner"></div>
-
-<div id="alertDrawer" class="alert-drawer">
-  <div class="alert-drawer-head">
-    <div style="font-weight:800;font-size:15px">🔔 নোটিফিকেশন (লাইফটাইম)</div>
-    <div style="display:flex;gap:8px">
-      <button class="tbtn" onclick="clearAlerts()">🗑 মুছো</button>
-      <button class="tbtn" onclick="closeAlerts()">✕ বন্ধ</button>
-    </div>
-  </div>
-  <div id="alertList" class="alert-list"></div>
-</div>
-<div id="alertOverlay" class="alert-overlay" onclick="closeAlerts()"></div>
-
-<div class="main">
-
-<!-- HOME -->
-<div id="pg-home" class="page active">
-  <div class="sg">
-    <div class="sc"><div class="sc-i">💾</div><div class="sc-v" id="cMem">--</div><div class="sc-l">Memory MB</div></div>
-    <div class="sc"><div class="sc-i">⏱️</div><div class="sc-v" id="cSup">--</div><div class="sc-l">Server Uptime</div></div>
-    <div class="sc"><div class="sc-i">📦</div><div class="sc-v" id="cFiles">--</div><div class="sc-l">বট ফাইল</div></div>
-    <div class="sc"><div class="sc-i">🚀</div><div class="sc-v" id="cStarts">--</div><div class="sc-l">মোট Start</div></div>
-  </div>
-  <div class="sg3">
-    <div class="sc"><div class="sc-i">💥</div><div class="sc-v" id="cCrash">--</div><div class="sc-l">Crash</div></div>
-    <div class="sc"><div class="sc-i">🕐</div><div class="sc-v" id="cTup">--</div><div class="sc-l">মোট Uptime</div></div>
-    <div class="sc"><div class="sc-i">🖥️</div><div class="sc-v" id="cNode">--</div><div class="sc-l">Node.js</div></div>
-  </div>
-
-  <!-- COOKIE -->
-  <div class="cookie-box">
-    <div style="font-size:13px;font-weight:700;margin-bottom:4px">🍪 Facebook Cookie / Appstate</div>
-    <div style="font-size:11px;color:var(--mu)">Cookie বা appstate.json paste করুন → বট চালু</div>
-    <div id="cookieStatus" style="font-size:12px;margin:6px 0;padding:6px 10px;border-radius:8px;display:none"></div>
-    <textarea class="ci" id="cookieInput" placeholder='[{"key":"c_user","value":"..."}] অথবা plain cookie string'></textarea>
-    <button class="btn b-start" onclick="saveCookie()">✅ Cookie সেভ ও বট চালু করুন</button>
-  </div>
-
-  <!-- BOT CONTROL -->
-  <div class="bc">
-    <div class="bst">
-      <div class="dot" id="sDot"></div>
-      <div><div class="bst-txt" id="sTxt">চেক করছে...</div><div class="bst-up" id="sUp"></div></div>
-    </div>
-    <div class="bg2">
-      <button class="btn b-start"   onclick="botAct('start')">▶ চালু</button>
-      <button class="btn b-stop"    onclick="botAct('stop')">⏹ বন্ধ</button>
-    </div>
-    <div class="bg3">
-      <button class="btn b-restart" onclick="botAct('restart')">🔄 রিস্টার্ট</button>
-      <button class="btn b-npm"     onclick="npmInst()">📦 npm</button>
-      <button class="btn b-backup"  onclick="doBackup()">💾 Backup</button>
-    </div>
-    <div class="bg2" style="margin-top:8px">
-      <button class="btn b-green" onclick="mongoSync()">☁️ MongoDB Sync</button>
-      <button class="btn b-ghost" onclick="mongoRestore()">🔄 Restore</button>
-    </div>
-    <div class="tog-row">
-      <div><div style="font-size:13px;font-weight:600">Auto Restart</div><div style="font-size:10px;color:var(--mu);margin-top:2px">Crash হলে অটো চালু</div></div>
-      <label class="tog"><input type="checkbox" id="arTog" checked disabled title="সবসময় ON থাকে"><div class="tog-bg"></div><div class="tog-dot"></div></label>
-    </div>
-  </div>
-
-  <!-- HISTORY -->
-  <div class="bc">
-    <div class="pg-title">📈 Restart ইতিহাস</div>
-    <div class="hist" id="histList"><div style="font-size:12px;color:var(--mu);text-align:center;padding:12px">লোড হচ্ছে...</div></div>
-  </div>
-</div>
-
-<!-- LIVE MONITOR -->
-<div id="pg-monitor" class="page">
-  <div class="pg-title">📊 লাইভ সিস্টেম মনিটর</div>
-
-  <!-- CARD ১: RAM / Render রিসোর্স -->
-  <div class="mon-card">
-    <div class="mon-head">🖥️ RAM ব্যবহার <span class="mon-badge off">সীমা ৫১২MB</span></div>
-
-    <div class="mon-row" id="mHeavyRow" style="display:none">
-      <div class="mon-row-top"><span class="mon-row-label">⬇️ লাইভ ডাউনলোড</span><span class="mon-row-val" id="mHeavyTxt">-- / --</span></div>
-      <div class="mbar"><div class="mbar-fill" id="mHeavyBar" style="width:0%;background:var(--bl)"></div></div>
-    </div>
-
-    <div class="mon-row">
-      <div class="mon-row-top"><span class="mon-row-label">🧩 প্যানেল</span><span class="mon-row-val" id="mPanelTxt">-- MB / 512 MB</span></div>
-      <div class="mbar"><div class="mbar-fill" id="mPanelBar" style="width:0%;background:var(--gr)"></div></div>
-      <div class="mon-peak">📈 সর্বোচ্চ (লাইফটাইম): <b id="mPanelPeak">-- MB</b></div>
-    </div>
-
-    <div class="mon-row">
-      <div class="mon-row-top"><span class="mon-row-label">🤖 বট</span><span class="mon-row-val" id="mBotTxt">-- MB / 512 MB</span></div>
-      <div class="mbar"><div class="mbar-fill" id="mBotBar" style="width:0%;background:var(--gr)"></div></div>
-      <div class="mon-peak">📈 সর্বোচ্চ (লাইফটাইম): <b id="mBotPeak">-- MB</b></div>
-    </div>
-
-    <div class="mon-row">
-      <div class="mon-row-top"><span class="mon-row-label">⚡ মোট (প্যানেল+বট)</span><span class="mon-row-val" id="mTotalTxt">-- MB / 512 MB</span></div>
-      <div class="mbar"><div class="mbar-fill" id="mTotalBar" style="width:0%;background:var(--gr)"></div></div>
-    </div>
-
-    <div class="mon-row" id="mRenderRow" style="display:none">
-      <div class="mon-row-top"><span class="mon-row-label">🌐 Render ব্যান্ডউইথ (২৪ ঘণ্টা)<span class="mon-badge" id="mRenderBadge"></span></span><span class="mon-row-val" id="mRenderTxt"></span></div>
-    </div>
-    <div class="mon-note" id="mRenderNote">ℹ️ Render bandwidth সরাসরি দেখতে Render Dashboard → Account Settings-এ একটা API Key বানিয়ে <b>RENDER_API_KEY</b> আর <b>RENDER_SERVICE_ID</b> নামে Environment Variable হিসেবে বসিয়ে দাও — তাহলে এখানেও লাইভ দেখাবে। এই মুহূর্তে সঠিক মোট ব্যান্ডউইথ/মাসিক সীমার জন্য Render Dashboard-ই সবচেয়ে নির্ভরযোগ্য জায়গা।</div>
-  </div>
-
-  <!-- CARD ২: MongoDB স্টোরেজ -->
-  <div class="mon-card">
-    <div class="mon-head">🗄️ MongoDB Atlas স্টোরেজ <span class="mon-badge off">M0 সীমা ৫১২MB</span></div>
-
-    <div class="mon-row">
-      <div class="mon-row-top"><span class="mon-row-label">💽 ব্যবহৃত (ডেটা + ইনডেক্স)</span><span class="mon-row-val" id="mMongoTxt">-- MB / 512 MB</span></div>
-      <div class="mbar"><div class="mbar-fill" id="mMongoBar" style="width:0%;background:var(--gr)"></div></div>
-      <div class="mon-peak">📈 সর্বোচ্চ (লাইফটাইম): <b id="mMongoPeak">-- MB</b></div>
-    </div>
-
-    <div class="sg3" style="margin-top:12px">
-      <div class="sc"><div class="sc-i">📄</div><div class="sc-v" id="mMongoObjs" style="font-size:16px">--</div><div class="sc-l">মোট এন্ট্রি</div></div>
-      <div class="sc"><div class="sc-i">💾</div><div class="sc-v" id="mMongoData" style="font-size:16px">--</div><div class="sc-l">Data (MB)</div></div>
-      <div class="sc"><div class="sc-i">🔎</div><div class="sc-v" id="mMongoIdx" style="font-size:16px">--</div><div class="sc-l">Index (MB)</div></div>
-    </div>
-    <div class="mon-note">ℹ️ এই হিসাব MongoDB Atlas-এর ফ্রি (M0) টায়ারের ৫১২MB সীমা ধরে দেখানো হচ্ছে। অন্য টায়ার ব্যবহার করলে সীমা ভিন্ন হবে, তখন এই শতাংশ সরাসরি প্রযোজ্য না।</div>
-  </div>
-
-  <!-- CARD ৩: লাইফটাইম সামারি -->
-  <div class="mon-card">
-    <div class="mon-head">⏳ লাইফটাইম সামারি <span class="mon-badge ok">সব সময়ই সেভ হয়</span></div>
-    <div class="sg3">
-      <div class="sc"><div class="sc-i">🚀</div><div class="sc-v" id="mLtStarts" style="font-size:16px">--</div><div class="sc-l">মোট চালু হয়েছে</div></div>
-      <div class="sc"><div class="sc-i">💥</div><div class="sc-v" id="mLtCrashes" style="font-size:16px">--</div><div class="sc-l">মোট ক্র্যাশ</div></div>
-      <div class="sc"><div class="sc-i">🕒</div><div class="sc-v" id="mLtUptime" style="font-size:14px">--</div><div class="sc-l">মোট সচল সময়</div></div>
-    </div>
-    <div class="mon-note" style="margin-top:12px">📅 ট্র্যাক করা হচ্ছে যবে থেকে: <b id="mLtSince">--</b><br>ℹ️ এই সংখ্যাগুলো প্যানেল বা বট যতবারই restart হোক না কেন কখনো শূন্য হয়ে যায় না — MongoDB-তে স্থায়ীভাবে জমা থাকে।</div>
-  </div>
-</div>
-
-<!-- TERMINAL (হ্যাকিং স্টাইল, আলাদা ট্যাব) -->
-<div id="pg-term" class="page">
-  <div class="hack-term">
-    <div class="hack-topbar"><span class="hack-dot r"></span><span class="hack-dot y"></span><span class="hack-dot g"></span><span class="hack-title">root@belal-bot:~# system_monitor.sh</span></div>
-    <div class="hack-body">
-      <div class="hack-glitch" data-text="BELAL BOTX666-MAX">BELAL BOTX666-MAX</div>
-      <div class="hack-line hack-dim">[<span id="hkTime">--:--:--</span>] secure connection established ✓</div>
-      <div class="hack-line hack-dim">[BOOT] kernel modules ... <span class="hack-ok">OK</span></div>
-      <div class="hack-line hack-dim">[BOOT] mongo link ......... <span class="hack-ok">OK</span></div>
-      <div class="hack-line hack-dim">[BOOT] ipc channel ........ <span class="hack-ok">OK</span></div>
-      <div class="hack-sep"></div>
-
-      <div class="hack-line">🌐 NETWORK ⬇ <b id="hkRx">0.0</b> KB/s &nbsp; ⬆ <b id="hkTx">0.0</b> KB/s</div>
-      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill net" id="hkNetBar" style="width:0%"></div></div></div>
-
-      <div class="hack-line">🧠 CPU LOAD <b id="hkCpu">0</b>%</div>
-      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill cpu" id="hkCpuBar" style="width:0%"></div></div></div>
-
-      <div class="hack-line">💾 RAM USAGE <b id="hkRam">0</b>% <span class="hack-dim">(512MB সীমা)</span></div>
-      <div class="hack-bar-row"><div class="hack-bar"><div class="hack-bar-fill ram" id="hkRamBar" style="width:0%"></div></div></div>
-
-      <div class="hack-sep"></div>
-      <div class="hack-line">⬇️ ACTIVE DOWNLOADS: <b id="hkHeavy">0/2</b></div>
-      <div class="hack-line">🤖 BOT STATUS: <b id="hkBotStatus" class="hack-blink-ok">SCANNING...</b></div>
-      <div class="hack-line">⏱️ UPTIME: <b id="hkUptime">00:00:00</b></div>
-      <div class="hack-sep"></div>
-
-      <div class="hack-line hack-dim">$ tail -f live.log</div>
-      <div id="hkTail"></div>
-      <div class="hack-line hack-dim">> <span class="hack-cursor">▋</span></div>
-    </div>
-  </div>
-</div>
-<div id="pg-logs" class="page">
-  <div class="log-bar">
-    <button class="lf on" onclick="setLF('all',this)">📋 সব</button>
-    <button class="lf" onclick="setLF('success',this)">✅</button>
-    <button class="lf" onclick="setLF('error',this)">❌</button>
-    <button class="lf" onclick="setLF('warn',this)">⚠️</button>
-    <button class="lf" onclick="clearLogs()">🗑</button>
-    <button class="lf" onclick="window.open('/api/bot/downloadlog')">⬇️</button>
-    <button class="lf" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'↓ Auto':'↕ Man'">↓ Auto</button>
-    <button class="lf" onclick="toggleLogFullscreen()">⛶ ফুলস্ক্রিন</button>
-  </div>
-  <div class="lbox" id="lbox"></div>
-</div>
-
-<!-- FILES -->
-<div id="pg-files" class="page">
-  <div id="edView" style="display:none">
-    <div class="ed-top">
-      <button class="tbtn" onclick="closeEd()">← ফিরে</button>
-      <span class="ed-fn" id="edFn"></span>
-      <span class="ed-lang" id="edLang"></span>
-      <button class="tbtn" onclick="testFile()">🧪 টেস্ট</button>
-      <button class="tbtn p" onclick="saveFile()">💾 সেভ</button>
-      <button class="tbtn" onclick="dlF(curEdit)">⬇️</button>
-    </div>
-    <div class="ed-wrap">
-      <pre id="cedHl" class="ed-hl" aria-hidden="true"><code></code></pre>
-      <textarea id="ced" spellcheck="false" oninput="onEdInput()" onscroll="syncEdScroll()"></textarea>
-    </div>
-  </div>
-  <div id="testOverlay" class="test-overlay" onclick="closeTest()"></div>
-  <div id="testPanel" class="test-panel">
-    <div class="test-head">
-      <div style="font-weight:800;font-size:15px">🧪 কমান্ড টেস্ট রিপোর্ট</div>
-      <button class="tbtn" onclick="closeTest()">✕ বন্ধ</button>
-    </div>
-    <div id="testBody" class="test-body"></div>
-  </div>
-  <div id="fmView">
-    <div class="pathbar" id="pathBar">📁 root</div>
-    <div class="fm-summary" id="fmSummary"></div>
-    <div class="fm-acts">
-      <button class="tbtn p" onclick="showM('mkdir')">📁+</button>
-      <button class="tbtn p" onclick="showM('newfile')">📄+</button>
-      <button class="tbtn" onclick="loadFiles(curDir)">🔄</button>
-      <button class="tbtn" onclick="promptTest()">🧪 ফাইল টেস্ট</button>
-      <button class="tbtn" onclick="editF('package.json')">📋 pkg</button>
-      <button class="tbtn" onclick="editF('index.js')">📜 index</button>
-      <button class="tbtn" onclick="editF('.env')">🔐 env</button>
-    </div>
-    <input class="sinput" type="text" id="fq" placeholder="🔍 ফাইল খোঁজুন..." oninput="doFS()">
-    <div id="fsRes" style="display:none;margin-bottom:10px"></div>
-    <div class="flist" id="flist"></div>
-  </div>
-</div>
-
-<!-- UPLOAD -->
-<div id="pg-upload" class="page">
-  <div class="pg-title">⬆️ আপলোড</div>
-
-  <!-- ZIP UPLOAD -->
-  <div class="upzone" id="upZone" onclick="document.getElementById('fInp').click()">
-    <div class="uz-i">📦</div>
-    <div style="font-size:14px;font-weight:700;margin-bottom:5px">ZIP আপলোড করুন</div>
-    <div style="color:var(--mu);font-size:12px">অটো extract + MongoDB সেভ হবে</div>
-    <div style="color:var(--bl);font-size:11px;margin-top:6px;font-weight:600">সর্বোচ্চ ৫০০MB</div>
-  </div>
-  <input type="file" id="fInp" accept=".zip" style="display:none" onchange="uploadF(this.files[0])">
-
-  <div class="prog-wrap" id="progWrap">
-    <div class="prog-top"><span id="upFN">আপলোড হচ্ছে...</span><span id="upPct">0%</span></div>
-    <div class="prog-bg"><div class="prog" id="progBar"></div></div>
-    <div id="upSt" style="font-size:11px;color:var(--mu);margin-top:5px"></div>
-  </div>
-
-  <!-- SINGLE FILE -->
-  <div class="multi-upload-area">
-    <div style="font-size:13px;font-weight:700;margin-bottom:10px">📄 একক ফাইল আপলোড</div>
-    <input type="file" id="singleInp" style="display:none" onchange="uploadSingle(this.files[0])">
-    <button class="tbtn p" onclick="document.getElementById('singleInp').click()">📄 ফাইল বেছে নিন</button>
-    <div id="singleStatus" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
-  </div>
-
-  <!-- MULTI FILE -->
-  <div class="multi-upload-area">
-    <div style="font-size:13px;font-weight:700;margin-bottom:10px">📂 একসাথে অনেক ফাইল</div>
-    <input type="file" id="multiInp" multiple style="display:none" onchange="uploadMulti(this.files)">
-    <button class="tbtn p" onclick="document.getElementById('multiInp').click()">📂 ফাইলগুলো বেছে নিন</button>
-    <div id="multiStatus" style="font-size:12px;color:var(--mu);margin-top:8px"></div>
-  </div>
-
-  <!-- CURRENT FOLDER -->
-  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:12px;font-size:12px">
-    <div style="color:var(--mu);margin-bottom:6px">📁 আপলোড হবে:</div>
-    <div style="color:var(--ac);font-weight:700">/bot/<span id="uploadDir">root</span></div>
-    <div style="color:var(--mu);font-size:11px;margin-top:4px">ফাইল ম্যানেজারে ফোল্ডারে ঢুকে আপলোড করলে সেখানে যাবে</div>
-  </div>
-</div>
-
-<!-- MORE -->
-<div id="pg-more" class="page">
-  <!-- OWNER INFO -->
-  <div class="set-card owner-card">
-    <div class="owner-crown">👑 MASTER BELAL NETWORK 👑</div>
-    <div class="owner-row"><span class="owner-k">👤 Name</span><span class="owner-v">BELAL YT (Verified)</span></div>
-    <div class="owner-row"><span class="owner-k">🎭 Nick</span><span class="owner-v">চাঁদের পাহাড়</span></div>
-    <div class="owner-row"><span class="owner-k">🚹 Gender</span><span class="owner-v">Male 💎</span></div>
-    <div class="owner-row"><span class="owner-k">❤️ Relation</span><span class="owner-v">Royal 💎</span></div>
-    <div class="owner-row"><span class="owner-k">🕌 Religion</span><span class="owner-v">Islam (🕋)</span></div>
-    <div class="owner-row"><span class="owner-k">🏫 Profession</span><span class="owner-v">Bot Developer / Business</span></div>
-    <div class="owner-row"><span class="owner-k">🏡 Address</span><span class="owner-v">Kurigram, BD 🇧🇩</span></div>
-    <div class="owner-sep">🔗 CONNECT ME 🔗</div>
-    <div class="owner-row"><span class="owner-k">📞 WhatsApp</span><span class="owner-v">01913246554</span></div>
-    <div class="owner-row"><span class="owner-k">🎬 TikTok</span><span class="owner-v">চাঁদের পাহাড়</span></div>
-    <div class="owner-sep">⚡ THIS PANEL ⚡</div>
-    <div class="owner-row"><span class="owner-k">🛡️ Status</span><span class="owner-v">Online & Active 💎</span></div>
-    <div class="owner-row"><span class="owner-k">🏗️ Panel Build</span><span class="owner-v" style="font-family:monospace;font-size:10px">${BUILD_VER}</span></div>
-  </div>
-
-  <!-- ENV -->
-  <div class="set-card">
-    <div class="set-title">⚙️ Environment (.env)</div>
-    <textarea id="envEd" spellcheck="false" placeholder="TOKEN=xxx&#10;COOKIE=xxx&#10;PREFIX=!&#10;ADMIN_ID=123456&#10;MONGO_URL=xxx"></textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="tbtn p" onclick="saveEnv()">💾 সেভ</button>
-      <button class="tbtn" onclick="loadEnv()">🔄 রিলোড</button>
-    </div>
-  </div>
-
-  <!-- MONGODB STATUS -->
-  <div class="set-card">
-    <div class="set-title">☁️ MongoDB স্ট্যাটাস</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <div class="mongo-badge" id="mongoBadge">চেক করছে...</div>
-      <div style="font-size:11px;color:var(--mu)" id="mongoInfo"></div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="tbtn p" onclick="mongoSync()">☁️ এখনই Sync</button>
-      <button class="tbtn" onclick="mongoRestore()">🔄 Restore</button>
-    </div>
-    <div style="font-size:11px;color:var(--mu);margin-top:10px">💡 Sync করলে সব ফাইল MongoDB তে সেভ হবে। Render restart হলে অটো restore হবে।</div>
-  </div>
-
-  <!-- SETTINGS -->
-  <div class="set-card">
-    <div class="set-title">🔧 Settings</div>
-    <div class="set-row"><div><div class="sr-l">Panel নাম</div></div><input class="sinp" type="text" id="sName" placeholder="${pname}"></div>
-    <div class="set-row"><div><div class="sr-l">Site URL</div><div class="sr-s">ঘুম বন্ধের জন্য</div></div><input class="sinp" type="text" id="sSiteUrl" placeholder="https://xxx.onrender.com"></div>
-    <div class="set-row"><div><div class="sr-l">Auto Restart</div><div class="sr-s">সবসময় ON থাকে (বন্ধ করা যায় না)</div></div><label class="tog"><input type="checkbox" id="sAR" checked disabled title="সবসময় ON থাকে"><div class="tog-bg"></div><div class="tog-dot"></div></label></div>
-    <div class="set-row"><div><div class="sr-l">Schedule Restart</div><div class="sr-s">প্রতিদিন নির্দিষ্ট সময়ে</div></div><label class="tog"><input type="checkbox" id="sSched"><div class="tog-bg"></div><div class="tog-dot"></div></label></div>
-    <div class="set-row"><div><div class="sr-l">Restart সময়</div></div><input class="sinp" type="time" id="sTime" value="03:00"></div>
-    <div style="margin-top:12px"><button class="tbtn p" onclick="saveSettings()">💾 সেভ</button></div>
-  </div>
-
-  <!-- PASSWORD -->
-  <div class="set-card">
-    <div class="set-title">🔐 পাসওয়ার্ড পরিবর্তন</div>
-    <div class="set-row"><div class="sr-l">বর্তমান</div><input class="sinp" type="password" id="sCur" placeholder="বর্তমান"></div>
-    <div class="set-row"><div class="sr-l">নতুন</div><input class="sinp" type="password" id="sNew" placeholder="নতুন (৪+ অক্ষর)"></div>
-    <div style="margin-top:12px"><button class="tbtn p" onclick="changePw()">🔐 পরিবর্তন</button></div>
-  </div>
-
-  <!-- MAINTENANCE -->
-  <div class="set-card">
-    <div class="set-title">🛠️ Maintenance</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="tbtn" onclick="doBackup()">💾 Full Backup</button>
-      <button class="tbtn d" onclick="clearLogFile()">🗑 Log মুছুন</button>
-      <button class="tbtn" onclick="location.href='/logout'">🚪 লগআউট</button>
-    </div>
-  </div>
-</div>
-
-</div>
-
-<!-- TABS -->
-<div class="tabs">
-  <button class="tab active" onclick="goTab('home',this)"><span class="ti">🏠</span><span class="tl">হোম</span></button>
-  <button class="tab" onclick="goTab('monitor',this)"><span class="ti">📊</span><span class="tl">মনিটর</span></button>
-  <button class="tab" onclick="goTab('term',this)"><span class="ti">⚡</span><span class="tl">টার্মিনাল</span></button>
-  <button class="tab" onclick="goTab('logs',this)"><span class="ti">📋</span><span class="tl">লগ</span></button>
-  <button class="tab" onclick="goTab('files',this)"><span class="ti">📁</span><span class="tl">ফাইল</span></button>
-  <button class="tab" onclick="goTab('upload',this)"><span class="ti">⬆️</span><span class="tl">আপলোড</span></button>
-  <button class="tab" onclick="goTab('more',this)"><span class="ti">⚙️</span><span class="tl">আরো</span></button>
-</div>
-
-<!-- MODALS -->
-<div class="mbg" id="mod-mkdir"><div class="modal"><h3>📁 নতুন ফোল্ডার</h3><input type="text" id="mkN" placeholder="ফোল্ডারের নাম"><div class="modal-btns"><button class="tbtn" onclick="closeM('mkdir')">বাতিল</button><button class="tbtn p" onclick="doMkdir()">তৈরি</button></div></div></div>
-<div class="mbg" id="mod-newfile"><div class="modal"><h3>📄 নতুন ফাইল</h3><input type="text" id="nfN" placeholder="test.js বা commands/mycommand.js"><div class="modal-btns"><button class="tbtn" onclick="closeM('newfile')">বাতিল</button><button class="tbtn p" onclick="doNewFile()">তৈরি</button></div></div></div>
-<div class="mbg" id="mod-rename"><div class="modal"><h3>✏️ নাম পরিবর্তন</h3><input type="text" id="rnV" placeholder="নতুন নাম"><div class="modal-btns"><button class="tbtn" onclick="closeM('rename')">বাতিল</button><button class="tbtn p" onclick="doRename()">পরিবর্তন</button></div></div></div>
-<div class="mbg" id="mod-copy"><div class="modal"><h3>📋 Copy করুন</h3><input type="text" id="cpTo" placeholder="destination path"><div class="modal-btns"><button class="tbtn" onclick="closeM('copy')">বাতিল</button><button class="tbtn p" onclick="doCopy()">Copy</button></div></div></div>
-
-<div class="tw" id="tw"></div>
-
-<script>
-// ── গ্লোবাল এরর ক্যাচার — script-এর একদম শুরুতে, যাতে যেকোনো পরবর্তী কোডে এরর হলেও সাথে সাথে স্ক্রিনে দেখা যায় ──
-// (কোনো bare dependency নেই অন্য ফাংশনের উপর, যাতে সবার আগে এবং সবসময় নির্ভরযোগ্যভাবে কাজ করে)
-function _escSafe(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function showGlobalError(msg){
-  try{
-    let diag=document.getElementById("diagBox");
-    if(!diag){
-      diag=document.createElement("div");
-      diag.id="diagBox";
-      diag.style.cssText="position:fixed;bottom:70px;left:8px;right:8px;background:#2a0a0a;border:2px solid #ff4444;border-radius:10px;padding:12px;z-index:9999;font-family:monospace;font-size:11px;color:#ffaaaa;max-height:200px;overflow-y:auto;pointer-events:auto";
-      (document.body||document.documentElement).appendChild(diag);
-    }
-    diag.innerHTML="🔴 GLOBAL ERROR ("+new Date().toLocaleTimeString()+")<br>"+_escSafe(msg).replace(/\n/g,"<br>")+"<hr>"+diag.innerHTML;
-  }catch(e){ /* ডায়াগনস্টিক নিজেই যেন কখনো ক্র্যাশ না করে */ }
-}
-window.addEventListener("error", function(e){
-  // নেটওয়ার্ক/ফেচ/WS error → showGlobalError-এ পাঠাবো না, Render free spin-up এ এটা স্বাভাবিক
-  const msg=(e.message||"").toLowerCase();
-  if(msg.includes("network")||msg.includes("fetch")||msg.includes("failed to fetch")||msg.includes("websocket")||msg.includes("load")) return;
-  showGlobalError((e.message||"unknown")+" @ "+(e.filename||"")+":"+(e.lineno||""));
-});
-window.addEventListener("unhandledrejection", function(e){
-  const reason=e.reason&&(e.reason.message||String(e.reason))||"";
-  const r=reason.toLowerCase();
-  // fetch abort / network error / WS error → স্বাভাবিক, দেখানোর দরকার নেই
-  if(r.includes("abort")||r.includes("network")||r.includes("failed to fetch")||r.includes("websocket")) return;
-  showGlobalError("Unhandled Promise: "+reason);
-});
-
-let curDir="",curEdit="",renameFrom="",copyFrom="",logFilter="all",autoScroll=true;
-let ws,_botUpSec=0,_botRunning=false;
-
-// TABS
-function goTab(id,btn){
-  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  btn.classList.add("active");
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  document.getElementById("pg-"+id).classList.add("active");
-  if(id!=="term"){ clearInterval(_hackTimer); }
-  if(id==="files") loadFiles(curDir);
-  if(id==="more"){loadEnv();loadSettings();}
-  if(id==="logs") document.getElementById("lbox").scrollTop=document.getElementById("lbox").scrollHeight;
-  if(id==="upload"){document.getElementById("uploadDir").textContent=curDir||"root";}
-  if(id==="monitor") loadMonitor();
-  if(id==="term"){ loadTerminal(); _hackTimer=setInterval(loadTerminal,1500); }
-}
-
-// WS
-let _wsConnected=false;
-function connectWS(){
-  const proto=location.protocol==="https:"?"wss":"ws";
-  const ts=document.getElementById("tStatus"); if(ts&&!_wsConnected) ts.textContent="🔄 সংযোগ হচ্ছে...";
-  ws=new WebSocket(proto+"://"+location.host);
-  ws.onopen=()=>{ _wsConnected=true; refresh(); }; // WS connect হলেই একবার refresh করো
-  ws.onmessage=e=>{
-    const m=JSON.parse(e.data);
-    if(m.type==="log") appendLog(m.data);
-    if(m.type==="logs"){document.getElementById("lbox").innerHTML="";m.data.forEach(appendLog);}
-    if(m.type==="status") updateStatus(m.running,m.starting);
-    if(m.type==="clearLogs") document.getElementById("lbox").innerHTML="";
-    if(m.type==="alert"){ showAlertBanner(m.data); _alertsCache.unshift(m.data); _unreadAlerts++; updateBellBadge(); if(document.getElementById("alertDrawer").classList.contains("show")) renderAlertList(); }
-    if(m.type==="mongo") updateMongo(m.connected);
-  };
-  ws.onerror=()=>{ _wsConnected=false; }; // error চুপচাপ handle করো, onclose-ই retry নেবে
-  ws.onclose=()=>{ _wsConnected=false; setTimeout(connectWS,3000); };
-}
-
-// ── ইন-প্যানেল অ্যালার্ট সিস্টেম ──
-let _alertsCache=[], _unreadAlerts=0;
-const _lvlIcon={info:"ℹ️",warn:"⚠️",error:"🔴"};
-function showAlertBanner(a){
-  const box=document.getElementById("alertBanner");
-  const d=document.createElement("div");
-  d.className="alert-banner-item "+(a.level||"info");
-  d.innerHTML='<span>'+(_lvlIcon[a.level]||"ℹ️")+'</span><div><b>'+esc(a.title)+'</b><div style="color:var(--mu);margin-top:2px">'+esc(a.message)+'</div></div><span class="ab-x" onclick="this.parentElement.remove()">✕</span>';
-  box.appendChild(d);
-  setTimeout(()=>{ if(d.parentElement) d.remove(); }, 8000);
-}
-function updateBellBadge(){
-  const b=document.getElementById("bellBadge");
-  if(_unreadAlerts>0){ b.style.display="flex"; b.textContent=_unreadAlerts>99?"99+":_unreadAlerts; }
-  else b.style.display="none";
-}
-function renderAlertList(){
-  const list=document.getElementById("alertList");
-  if(!_alertsCache.length){ list.innerHTML='<div class="alert-empty">🔕 কোনো নোটিফিকেশন নেই</div>'; return; }
-  list.innerHTML=_alertsCache.map(a=>
-    '<div class="alert-item '+(a.level||"info")+'"><div class="alert-item-title">'+(_lvlIcon[a.level]||"ℹ️")+' '+esc(a.title)+'</div><div>'+esc(a.message)+'</div><div class="alert-item-time">'+new Date(a.time).toLocaleString("bn-BD")+'</div></div>'
-  ).join("");
-}
-async function openAlerts(){
-  document.getElementById("alertDrawer").classList.add("show");
-  document.getElementById("alertOverlay").classList.add("show");
-  _unreadAlerts=0; updateBellBadge();
-  try{
-    const d=await fetch("/api/alerts").then(r=>r.json());
-    _alertsCache=d.alerts||[];
-  }catch{}
-  renderAlertList();
-}
-function closeAlerts(){
-  document.getElementById("alertDrawer").classList.remove("show");
-  document.getElementById("alertOverlay").classList.remove("show");
-}
-async function clearAlerts(){
-  if(!confirm("সব নোটিফিকেশন মুছবে?")) return;
-  await fetch("/api/alerts/clear",{method:"POST"});
-  _alertsCache=[]; renderAlertList();
-}
-(async function initAlerts(){
-  try{
-    const d=await fetch("/api/alerts").then(r=>r.json());
-    _alertsCache=d.alerts||[];
-  }catch{}
-})();
-
-function appendLog(e){
-  if(logFilter!=="all"&&e.type!==logFilter)return;
-  const box=document.getElementById("lbox");
-  const d=document.createElement("div");
-  const cls={info:"li",success:"ls",error:"lr",warn:"lw"}[e.type||"info"]||"li";
-  const icon={info:"ℹ️",success:"✅",error:"❌",warn:"⚠️"}[e.type||"info"]||"ℹ️";
-  d.className="le "+cls;d.dataset.t=e.type||"info";
-  d.innerHTML='<span class="l-ic">'+icon+'</span><span class="lt">'+e.time+'</span><span class="lx">'+esc(e.text)+'</span>';
-  box.appendChild(d);
-  if(autoScroll) box.scrollTop=box.scrollHeight;
-}
-
-function esc(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
-function setLF(f,btn){logFilter=f;document.querySelectorAll(".lf").forEach(b=>b.classList.remove("on"));btn.classList.add("on");document.querySelectorAll(".le").forEach(el=>el.style.display=(f==="all"||el.dataset.t===f)?"flex":"none");}
-function toggleLogFullscreen(){
-  document.body.classList.toggle("log-fullscreen");
-  const box=document.getElementById("lbox");
-  if(autoScroll) box.scrollTop=box.scrollHeight;
-}
-function clearLogs(){fetch("/api/bot/clearlogs",{method:"POST"});}
-async function doReset(){
-  if(!confirm("পুরনো সব লগ আর নোটিফিকেশন মুছে একদম ফ্রেশ শুরু করবে?")) return;
-  await fetch("/api/bot/clearlogs",{method:"POST"});
-  await fetch("/api/alerts/clear",{method:"POST"});
-  document.getElementById("lbox").innerHTML="";
-  document.getElementById("alertBanner").innerHTML="";
-  _alertsCache=[]; _unreadAlerts=0; updateBellBadge(); renderAlertList();
-  toast("🔄 রিসেট হয়ে গেছে — ফ্রেশ শুরু","success");
-}
-function clearLogFile(){if(!confirm("Log file মুছবেন?"))return;fetch("/api/bot/clearlogfile",{method:"POST"}).then(r=>r.json()).then(d=>toast(d.ok?"✅ মুছা হয়েছে":"❌ ব্যর্থ",d.ok?"success":"error"));}
-
-function updateStatus(running,starting){
-  _botRunning=running;
-  if(!running) _botUpSec=0;
-  const state = running?"ready":(starting?"starting":"stopped");
-  [document.getElementById("sDot"),document.getElementById("tDot")].forEach(d=>{if(d)d.className="dot"+(running?" on":(starting?" starting":""));});
-  const tLogo=document.getElementById("topLogo");if(tLogo)tLogo.className="top-logo"+(running?" live":(starting?" starting":""));
-  const texts={ready:"✅ বট চলছে",starting:"🟡 বট চালু হচ্ছে...",stopped:"🔴 বট বন্ধ"};
-  const textsShort={ready:"✅ চলছে",starting:"🟡 চালু হচ্ছে",stopped:"🔴 বন্ধ"};
-  const st=document.getElementById("sTxt");if(st)st.textContent=texts[state];
-  const ts=document.getElementById("tStatus");if(ts)ts.textContent=textsShort[state];
-}
-
-function updateMongo(connected){
-  const dot=document.getElementById("mongoDot");
-  const status=document.getElementById("mongoStatus");
-  const badge=document.getElementById("mongoBadge");
-  if(dot) dot.className="dot"+(connected?" on":"");
-  if(status) status.textContent=connected?"DB ✅":"DB ❌";
-  if(badge){badge.textContent=connected?"✅ MongoDB সংযুক্ত":"❌ MongoDB বিচ্ছিন্ন";badge.className="mongo-badge"+(connected?" ok":" err");}
-}
-
-function fmtT(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return h>0?h+"h "+m+"m":m>0?m+"m "+sc+"s":sc+"s";}
-function fsz(b){if(!b||b===0)return"—";if(b<1024)return b+"B";if(b<1048576)return(b/1024).toFixed(1)+"KB";return(b/1048576).toFixed(1)+"MB";}
-function fdt(d){
-  try{
-    const then=new Date(d).getTime(), now=Date.now();
-    const diffSec=Math.floor((now-then)/1000);
-    if(diffSec<0||isNaN(diffSec)) return new Date(d).toLocaleDateString("bn-BD",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
-    if(diffSec<10) return "এইমাত্র";
-    if(diffSec<60) return diffSec+" সেকেন্ড আগে";
-    const diffMin=Math.floor(diffSec/60);
-    if(diffMin<60) return diffMin+" মিনিট আগে";
-    const diffHr=Math.floor(diffMin/60);
-    if(diffHr<24) return diffHr+" ঘণ্টা আগে";
-    const diffDay=Math.floor(diffHr/24);
-    if(diffDay===1) return "গতকাল";
-    if(diffDay<7) return diffDay+" দিন আগে";
-    if(diffDay<30) return Math.floor(diffDay/7)+" সপ্তাহ আগে";
-    // পুরনো হলে সরাসরি তারিখ দেখাও
-    return new Date(d).toLocaleDateString("bn-BD",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
-  }catch{return"";}
-}
-// প্রতি ৩০ সেকেন্ডে ফাইল লিস্টের সময়গুলো লাইভ রিফ্রেশ করো (GitHub-এর মতো)
-// — data-mtime attribute থেকে আবার হিসাব করে টেক্সট আপডেট করে, পুরো লিস্ট আবার লোড করে না
-setInterval(()=>{
-  document.querySelectorAll("[data-mtime]").forEach(el=>{
-    const m=el.getAttribute("data-mtime");
-    if(m) el.textContent=fdt(m);
-  });
-},30000);
-
-// Live uptime counter
-setInterval(()=>{if(!_botRunning)return;_botUpSec++;const el=document.getElementById("sUp");if(el)el.textContent="⏱ চলছে: "+fmtT(_botUpSec);},1000);
-
-async function refresh(){
-  try{
-    const ac=new AbortController();
-    const toId=setTimeout(()=>ac.abort(),30000); // Render free instance spin-up ৫০+ সেকেন্ড নিতে পারে, তাই ৩০s timeout
-    const [rSt, rBs] = await Promise.all([
-      fetch("/api/stats",{signal:ac.signal}),
-      fetch("/api/bot/status",{signal:ac.signal})
-    ]);
-    clearTimeout(toId);
-    if(rSt.status===401 || rBs.status===401){ location.href="/login"; return; }
-    const st = await rSt.json(), bs = await rBs.json();
-    document.getElementById("cMem").textContent=st.memMB||"--";
-    document.getElementById("cSup").textContent=fmtT(st.serverUptime||0);
-    document.getElementById("cFiles").textContent=st.botFiles||0;
-    document.getElementById("cStarts").textContent=st.starts||0;
-    const cc=document.getElementById("cCrash");if(cc)cc.textContent=st.crashes||0;
-    const ct=document.getElementById("cTup");if(ct)ct.textContent=fmtT((st.totalUptime||0)+(bs.uptime||0));
-    const cn=document.getElementById("cNode");if(cn)cn.textContent=(st.node||"").replace("v","");
-    updateStatus(!!bs.ready, bs.running && !bs.ready);
-    updateMongo(st.mongoConnected||false);
-    fetch("/api/cookie/status").then(r=>r.json()).then(cs=>{
-      const el=document.getElementById("cookieStatus");if(!el)return;
-      if(cs.saved){el.style.display="block";el.style.background="rgba(46,213,115,.12)";el.style.color="var(--gr)";el.textContent="✅ Cookie ইতিমধ্যে সেভ করা আছে — নতুন করে না বসালেও চলবে";}
-      else{el.style.display="block";el.style.background="rgba(240,82,82,.12)";el.style.color="var(--rd)";el.textContent="⚠️ এখনো কোনো Cookie সেভ নেই";}
-    }).catch(()=>{});
-    if(bs.running&&bs.uptime>0&&_botUpSec===0) _botUpSec=bs.uptime;
-    [document.getElementById("arTog"),document.getElementById("sAR")].forEach(el=>{if(el)el.checked=st.autoRestart||false;});
-    const hist=(st.history||[]).slice().reverse().slice(0,8);
-    const hl=document.getElementById("histList");
-    if(hl)hl.innerHTML=hist.length?hist.map(h=>'<div class="hi"><span class="hi-date">'+new Date(h.date).toLocaleString("bn-BD").substring(0,16)+'</span><span class="hi-up">'+fmtT(h.uptime)+'</span><span class="hi-code">'+h.code+'</span></div>').join(""):'<div style="font-size:12px;color:var(--mu);text-align:center;padding:10px">ইতিহাস নেই</div>';
-    const pgMon=document.getElementById("pg-monitor");
-    if(pgMon&&pgMon.classList.contains("active")) loadMonitor();
-    _refreshFails=0;
-  }catch(e){
-    _refreshFails++;
-    // Render free instance spin-up (৫০s+) বা নেটওয়ার্ক সমস্যায় চুপচাপ retry — popup দিয়ে UI block করা ঠিক না
-    const ts=document.getElementById("tStatus");
-    if(_refreshFails<=3){
-      if(ts) ts.textContent="🔄 সংযোগ হচ্ছে...";
-    } else {
-      if(ts) ts.textContent="⚠️ retry #"+_refreshFails;
-    }
-    console.warn("[refresh error #"+_refreshFails+"]", e&&e.message);
-  }
-}
-let _refreshFails=0;
-
-// LIVE MONITOR
-function _mColor(pct){ return pct<60?"var(--gr)":pct<85?"var(--yw)":"var(--rd)"; }
-let _hackTimer=null, _hackTailShown=new Set();
-async function loadTerminal(){
-  try{
-    const d=await fetch("/api/system/terminal").then(r=>r.json());
-    const now=new Date();
-    document.getElementById("hkTime").textContent=now.toLocaleTimeString("en-GB");
-    if(d.net){
-      document.getElementById("hkRx").textContent=(d.net.rxKBs||0).toFixed(1);
-      document.getElementById("hkTx").textContent=(d.net.txKBs||0).toFixed(1);
-      const netPct=Math.min(100,Math.round(((d.net.rxKBs||0)+(d.net.txKBs||0))/2)); // মোটামুটি ভিজ্যুয়াল স্কেল, ২০০KB/s ধরে
-      document.getElementById("hkNetBar").style.width=netPct+"%";
-    }
-    document.getElementById("hkCpu").textContent=d.cpuPercent||0;
-    document.getElementById("hkCpuBar").style.width=(d.cpuPercent||0)+"%";
-    document.getElementById("hkRam").textContent=d.ramPercent||0;
-    document.getElementById("hkRamBar").style.width=(d.ramPercent||0)+"%";
-    const hv=document.getElementById("hkHeavy");
-    if(hv) hv.textContent=d.heavy?(d.heavy.active+"/"+d.heavy.max):"0/2";
-    if(d.uptimeSec!=null){ document.getElementById("hkUptime").textContent=fmtT(d.uptimeSec); }
-    const bs=document.getElementById("hkBotStatus");
-    if(bs){
-      if(d.botReady){ bs.textContent="ONLINE ✓"; bs.className="hack-blink-ok"; }
-      else if(d.botRunning){ bs.textContent="BOOTING..."; bs.className="hack-blink-ok"; }
-      else { bs.textContent="OFFLINE ✕"; bs.className="hack-blink-bad"; }
-    }
-    const tailBox=document.getElementById("hkTail");
-    if(tailBox && d.tail){
-      tailBox.innerHTML = d.tail.map(l=>'<div class="hack-line hack-tail-'+(l.type||"info")+'">['+l.time+'] '+esc(l.text)+'</div>').join("");
-    }
-  }catch(e){}
-}
-async function loadMonitor(){
-  try{
-    const d=await fetch("/api/system/live").then(r=>r.json());
-    const cap=(d.ram&&d.ram.capMB)||512;
-
-    const pMB=d.ram&&d.ram.panelMB!=null?d.ram.panelMB:null;
-    const bMB=d.ram&&d.ram.botMB!=null?d.ram.botMB:null;
-    const tMB=(pMB||0)+(bMB||0);
-
-    if(pMB!=null){const p=Math.min(100,Math.round(pMB/cap*100));document.getElementById("mPanelTxt").textContent=pMB+" MB / "+cap+" MB";document.getElementById("mPanelBar").style.width=p+"%";document.getElementById("mPanelBar").style.background=_mColor(p);}
-    if(bMB!=null){const p=Math.min(100,Math.round(bMB/cap*100));document.getElementById("mBotTxt").textContent=bMB+" MB / "+cap+" MB";document.getElementById("mBotBar").style.width=p+"%";document.getElementById("mBotBar").style.background=_mColor(p);}
-    else {document.getElementById("mBotTxt").textContent="বট বন্ধ আছে";document.getElementById("mBotBar").style.width="0%";}
-    {const p=Math.min(100,Math.round(tMB/cap*100));document.getElementById("mTotalTxt").textContent=tMB+" MB / "+cap+" MB";document.getElementById("mTotalBar").style.width=p+"%";document.getElementById("mTotalBar").style.background=_mColor(p);}
-
-    const hr=document.getElementById("mHeavyRow");
-    if(d.heavy){
-      hr.style.display="block";
-      const p=Math.min(100,Math.round((d.heavy.active/d.heavy.max)*100));
-      document.getElementById("mHeavyTxt").textContent=d.heavy.active+" / "+d.heavy.max+" চলছে";
-      document.getElementById("mHeavyBar").style.width=p+"%";
-    } else { hr.style.display="none"; }
-
-    const rr=document.getElementById("mRenderRow"),rb=document.getElementById("mRenderBadge"),rt=document.getElementById("mRenderTxt"),rn=document.getElementById("mRenderNote");
-    if(d.render&&d.render.configured){
-      rr.style.display="block";
-      if(d.render.ok){rb.textContent="লাইভ";rb.className="mon-badge ok";rt.textContent="Render API থেকে ডেটা এসেছে (নিচে raw দেখুন প্রয়োজনে)";rn.style.display="none";}
-      else{rb.textContent="ব্যর্থ";rb.className="mon-badge err";rt.textContent=d.render.error||"API কল ব্যর্থ হয়েছে";}
-    } else { rr.style.display="none"; }
-
-    if(d.mongo&&!d.mongo.error){
-      const mCap=512; // Atlas M0 ফ্রি টায়ারের সীমা
-      const used=d.mongo.totalMB||0;
-      const p=Math.min(100,Math.round(used/mCap*100));
-      document.getElementById("mMongoTxt").textContent=used+" MB / "+mCap+" MB";
-      document.getElementById("mMongoBar").style.width=p+"%";
-      document.getElementById("mMongoBar").style.background=_mColor(p);
-      document.getElementById("mMongoObjs").textContent=d.mongo.objects!=null?d.mongo.objects:"--";
-      document.getElementById("mMongoData").textContent=d.mongo.dataSizeMB!=null?d.mongo.dataSizeMB:"--";
-      document.getElementById("mMongoIdx").textContent=d.mongo.indexSizeMB!=null?d.mongo.indexSizeMB:"--";
-    } else {
-      document.getElementById("mMongoTxt").textContent="সংযুক্ত নেই";
-      document.getElementById("mMongoBar").style.width="0%";
-    }
-
-    // লাইফটাইম পিক + সামারি (MongoDB থেকে, প্যানেল/বট যতবার restart হোক না কেন হারায় না)
-    if(d.lifetime){
-      const lt=d.lifetime;
-      document.getElementById("mPanelPeak").textContent=(lt.peakPanelMB||0)+" MB";
-      document.getElementById("mBotPeak").textContent=(lt.peakBotMB||0)+" MB";
-      document.getElementById("mMongoPeak").textContent=(lt.peakMongoMB||0)+" MB";
-      document.getElementById("mLtStarts").textContent=(lt.totalStarts||0)+" বার";
-      document.getElementById("mLtCrashes").textContent=(lt.totalCrashes||0)+" বার";
-      document.getElementById("mLtUptime").textContent=_fmtLifeUp(lt.totalUptimeSec||0);
-      document.getElementById("mLtSince").textContent=lt.firstSeen?new Date(lt.firstSeen).toLocaleDateString("bn-BD",{year:"numeric",month:"long",day:"numeric"}):"--";
-    }
-  }catch(e){}
-}
-function _fmtLifeUp(sec){
-  const d=Math.floor(sec/86400),h=Math.floor((sec%86400)/3600),m=Math.floor((sec%3600)/60);
-  if(d>0) return d+"দিন "+h+"ঘণ্টা";
-  if(h>0) return h+"ঘণ্টা "+m+"মিনিট";
-  return m+"মিনিট";
-}
-
-// BOT
-async function botAct(a){
-  toast("⏳ "+{start:"চালু",stop:"বন্ধ",restart:"রিস্টার্ট"}[a]+"...","warn");
-  const d=await fetch("/api/bot/"+a,{method:"POST"}).then(r=>r.json());
-  toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");
-  setTimeout(refresh,2500);
-}
-async function npmInst(){toast("📦 npm install শুরু...","warn");const d=await fetch("/api/bot/install",{method:"POST"}).then(r=>r.json());toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");}
-function doBackup(){window.open("/api/backup");}
-async function toggleAR(v){
-  await fetch("/api/bot/autorestart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:v})});
-  toast(v?"✅ Auto Restart চালু":"⚠️ বন্ধ",v?"success":"warn");
-  [document.getElementById("arTog"),document.getElementById("sAR")].forEach(el=>{if(el)el.checked=v;});
-}
-
-// COOKIE
-async function saveCookie(){
-  const c=document.getElementById("cookieInput").value.trim();
-  if(!c)return toast("❌ Cookie লিখুন","error");
-  const d=await fetch("/api/cookie/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cookie:c})}).then(r=>r.json());
-  toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");
-  if(d.ok){document.getElementById("cookieInput").value="";toast("🔄 বট চালু হচ্ছে...","warn");setTimeout(()=>botAct("start"),1500);}
-}
-
-// MONGODB
-async function mongoSync(){toast("☁️ Sync শুরু হচ্ছে...","warn");const d=await fetch("/api/mongo/sync",{method:"POST"}).then(r=>r.json());toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");}
-async function mongoRestore(){toast("🔄 Restore শুরু...","warn");const d=await fetch("/api/mongo/restore",{method:"POST"}).then(r=>r.json());toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");if(d.ok)setTimeout(()=>loadFiles(curDir),2000);}
-
-// FILE ICONS
-function ficon(name,isDir){
-  if(isDir)return"📁";
-  const e=name.split(".").pop().toLowerCase();
-  return{js:"📜",mjs:"📜",cjs:"📜",json:"📋",md:"📝",txt:"📄",env:"🔐",log:"📋",jpg:"🖼",jpeg:"🖼",png:"🖼",gif:"🖼",webp:"🖼",mp3:"🎵",mp4:"🎬",zip:"📦",tar:"📦",gz:"📦",html:"🌐",css:"🎨",ts:"📘",py:"🐍",sh:"⚡",bat:"⚡",yml:"⚙️",yaml:"⚙️",xml:"📋",lock:"🔒",gitignore:"👁️",npmrc:"⚙️",babelrc:"⚙️"}[e]||"📄";
-}
-function ftype(name,isDir){
-  if(isDir)return"ft-dir";
-  const e=name.split(".").pop().toLowerCase();
-  if(["js","mjs","cjs","ts","py","sh","bat"].includes(e))return"ft-code";
-  if(["json","yml","yaml","xml","env","lock"].includes(e))return"ft-data";
-  if(["jpg","jpeg","png","gif","webp","mp3","mp4"].includes(e))return"ft-media";
-  if(["zip","tar","gz"].includes(e))return"ft-archive";
-  return"ft-doc";
-}
-function langExt(n){const e=n.split(".").pop().toLowerCase();return{js:"JavaScript",json:"JSON",md:"Markdown",html:"HTML",css:"CSS",py:"Python",ts:"TypeScript",sh:"Shell",env:"ENV",txt:"Text",yml:"YAML",xml:"XML"}[e]||e.toUpperCase();}
-
-function buildPath(dir){
-  const bar=document.getElementById("pathBar");
-  const parts=dir?dir.split("/"):[];
-  let html='<span class="pp" onclick="loadFiles(\\'\\')">📁 root</span>';
-  let acc="";
-  parts.forEach(p=>{acc+=(acc?"/":"")+p;const c=acc;html+='<span style="color:var(--mu)"> / </span><span class="pp" onclick="loadFiles(\\''+c+'\\')">'+p+'</span>';});
-  bar.innerHTML=html;
-}
-
-async function loadFiles(dir){
-  curDir=dir||"";buildPath(curDir);
-  document.getElementById("fmView").style.display="block";
-  document.getElementById("edView").style.display="none";
-  document.getElementById("fsRes").style.display="none";
-  document.getElementById("fq").value="";
-  document.getElementById("uploadDir").textContent=curDir||"root";
-  const data=await fetch("/api/files?path="+encodeURIComponent(curDir)).then(r=>r.json());
-  const nFiles=(data.items||[]).filter(i=>!i.isDir).length, nDirs=(data.items||[]).filter(i=>i.isDir).length;
-  document.getElementById("fmSummary").textContent="📁 "+nDirs+" ফোল্ডার · 📄 "+nFiles+" ফাইল";
-  const list=document.getElementById("flist");list.innerHTML="";
-  if(curDir){
-    const up=document.createElement("div");up.className="frow";
-    up.innerHTML='<span class="fi">⬆️</span><div class="fn"><div class="fn-name">.. উপরে যান</div></div>';
-    up.onclick=()=>loadFiles(curDir.split("/").slice(0,-1).join("/"));
-    list.appendChild(up);
-  }
-  if(!(data.items && data.items.length)){list.innerHTML='<div class="empty-fm"><div style="font-size:40px;margin-bottom:8px">📭</div><div>ফোল্ডার খালি</div></div>';return;}
-  data.items.forEach(item=>{
-    const fp=curDir?curDir+"/"+item.name:item.name;
-    const row=document.createElement("div");row.className="frow";
-    row.innerHTML='<span class="fi '+ftype(item.name,item.isDir)+'">'+ficon(item.name,item.isDir)+'</span>'
-      +'<div class="fn"><div class="fn-name">'+item.name+'</div><div class="fn-meta">'+fsz(item.size)+(item.mtime?' · <span data-mtime="'+item.mtime+'">'+fdt(item.mtime)+'</span>':"")+'</div></div>'
-      +'<div class="fa">'
-      +(item.isDir?'':'<button class="fab" onclick="event.stopPropagation();editF(\\''+fp+'\\')">✏️</button>')
-      +(!item.isDir && /\.js$/i.test(item.name)?'<button class="fab" onclick="event.stopPropagation();quickTest(\\''+fp+'\\')">🧪</button>':'')
-      +'<button class="fab" onclick="event.stopPropagation();dlF(\\''+fp+'\\')">⬇️</button>'
-      +'<button class="fab" onclick="event.stopPropagation();showRename(\\''+fp+'\\',\\''+item.name+'\\')">🔤</button>'
-      +'<button class="fab" onclick="event.stopPropagation();showCopy(\\''+fp+'\\')">📋</button>'
-      +'<button class="fab del" onclick="event.stopPropagation();delItem(\\''+fp+'\\',\\''+item.name+'\\')">🗑</button>'
-      +'</div>';
-    if(item.isDir) row.onclick=()=>loadFiles(fp);
-    else row.onclick=()=>editF(fp);
-    list.appendChild(row);
-  });
-}
-
-async function editF(p){
-  const d=await fetch("/api/file/read?path="+encodeURIComponent(p)).then(r=>r.json());
-  if(d.error)return toast("❌ "+d.error,"error");
-  curEdit=p;
-  document.getElementById("edFn").textContent=p.split("/").pop();
-  document.getElementById("edLang").textContent=langExt(p);
-  document.getElementById("ced").value=d.content;
-  document.getElementById("fmView").style.display="none";
-  document.getElementById("edView").style.display="block";
-  const isHl = /\.(js|json|mjs|cjs)$/i.test(p);
-  document.querySelector(".ed-wrap").classList.toggle("hl-active", isHl);
-  document.getElementById("ced").classList.toggle("hl-on", isHl);
-  if(isHl) renderHighlight();
-}
-function onEdInput(){ if(document.querySelector(".ed-wrap").classList.contains("hl-active")) renderHighlight(); }
-function syncEdScroll(){
-  const hl=document.getElementById("cedHl"), ta=document.getElementById("ced");
-  hl.scrollTop=ta.scrollTop; hl.scrollLeft=ta.scrollLeft;
-}
-function renderHighlight(){
-  const code=document.getElementById("ced").value;
-  document.querySelector("#cedHl code").innerHTML=highlightJS(code);
-  syncEdScroll();
-}
-function highlightJS(src){
-  let s=esc(src);
-  // কমেন্ট আর স্ট্রিং আগে টোকেনাইজ করা হচ্ছে যাতে ওগুলোর ভিতরের কিওয়ার্ড রঙিন না হয়ে যায়
-  const tokens=[];
-  s=s.replace(/(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/g,m=>{tokens.push('<span class="tok-com">'+m+'</span>');return "\u0000"+(tokens.length-1)+"\u0000";});
-  s=s.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|'(?:[^'\\]|\\.)*')/g,m=>{tokens.push('<span class="tok-str">'+m+'</span>');return "\u0000"+(tokens.length-1)+"\u0000";});
-  s=s.replace(/\b(const|let|var|function|async|await|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|class|extends|super|this|typeof|instanceof|in|of|null|undefined|true|false|import|export|default|require|module|exports|delete|void|yield|static|get|set)\b/g,'<span class="tok-kw">$1</span>');
-  s=s.replace(/\b(\d+\.?\d*)\b/g,'<span class="tok-num">$1</span>');
-  s=s.replace(/\b([a-zA-Z_$][\w$]*)(?=\s*\()/g,'<span class="tok-fn">$1</span>');
-  s=s.replace(/\u0000(\d+)\u0000/g,(_,i)=>tokens[+i]);
-  return s;
-}
-function closeEd(){document.getElementById("edView").style.display="none";document.getElementById("fmView").style.display="block";}
-async function testFile(pathOverride){
-  const target = pathOverride || curEdit;
-  if(!target) return;
-  document.getElementById("testOverlay").classList.add("show");
-  document.getElementById("testPanel").classList.add("show");
-  document.getElementById("testBody").innerHTML='<div style="text-align:center;padding:30px;color:var(--mu)">⏳ টেস্ট চলছে...</div>';
-  try{
-    const d=await fetch("/api/file/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:target})}).then(r=>r.json());
-    if(!d.ok){ document.getElementById("testBody").innerHTML='<div class="test-sec bad"><div class="test-sec-title">❌ ব্যর্থ</div><div class="test-sec-msg">'+esc(d.msg||d.error||"অজানা এরর")+'</div></div>'; return; }
-    renderTestResult(d.result);
-  }catch(e){ document.getElementById("testBody").innerHTML='<div class="test-sec bad"><div class="test-sec-title">❌ নেটওয়ার্ক এরর</div></div>'; }
-}
-function quickTest(fp){ testFile(fp); }
-function promptTest(){
-  const p=prompt("কোন ফাইল টেস্ট করতে চাও? (যেমন: Script/commands/video.js)", curDir?curDir+"/":"");
-  if(p&&p.trim()) testFile(p.trim());
-}
-function closeTest(){
-  document.getElementById("testOverlay").classList.remove("show");
-  document.getElementById("testPanel").classList.remove("show");
-}
-function renderTestResult(r){
-  let html="";
-  const structOk = !r.structure || r.structure.ok;
-  const depsOk = !r.dependencies || r.dependencies.every(d=>d.ok);
-  const apisOk = !r.apis || r.apis.every(a=>a.ok);
-  const allGood = r.syntax.ok && structOk && depsOk && apisOk;
-  html += allGood
-    ? '<div class="test-sec ok" style="text-align:center;font-size:14px;font-weight:800">✅ এই ফাইল সম্পূর্ণ ঠিক আছে — নিশ্চিন্তে ব্যবহার করতে পারো</div>'
-    : '<div class="test-sec bad" style="text-align:center;font-size:14px;font-weight:800">⚠️ এই ফাইলে সমস্যা আছে — নিচে বিস্তারিত দেখো</div>';
-  html+='<div class="test-sec '+(r.syntax.ok?"ok":"bad")+'"><div class="test-sec-title">'+(r.syntax.ok?"✅":"❌")+' সিনট্যাক্স</div><div class="test-sec-msg">'+esc(r.syntax.msg)+'</div></div>';
-  if(r.structure){
-    html+='<div class="test-sec '+(r.structure.ok?"ok":"bad")+'"><div class="test-sec-title">'+(r.structure.ok?"✅":"❌")+' কমান্ড স্ট্রাকচার</div><div class="test-sec-msg">'+esc(r.structure.msg)+'</div></div>';
-  }
-  if(r.dependencies && r.dependencies.length){
-    const allOk=r.dependencies.every(d=>d.ok);
-    html+='<div class="test-sec '+(allOk?"ok":"bad")+'"><div class="test-sec-title">'+(allOk?"✅":"⚠️")+' Dependencies</div>';
-    r.dependencies.forEach(d=>{ html+='<div class="test-api-row"><span class="test-api-url">'+esc(d.pkg)+'</span><span class="test-api-status '+(d.ok?"ok":"bad")+'">'+(d.ok?"✅ আছে":"❌ নেই")+'</span></div>'; });
-    html+='</div>';
-  }
-  if(r.apis && r.apis.length){
-    const allOk=r.apis.every(a=>a.ok);
-    html+='<div class="test-sec '+(allOk?"ok":"bad")+'"><div class="test-sec-title">'+(allOk?"✅":"⚠️")+' API লিংক (লাইভ চেক)</div>';
-    r.apis.forEach(a=>{ html+='<div class="test-api-row"><span class="test-api-url">'+esc(a.url)+'</span><span class="test-api-status '+(a.ok?"ok":"bad")+'">'+esc(String(a.status))+'</span></div>'; });
-    html+='</div>';
-  } else if(r.syntax.ok){
-    html+='<div class="test-sec-msg" style="text-align:center;padding:8px">ℹ️ ফাইলে কোনো http/https লিংক পাওয়া যায়নি</div>';
-  }
-  document.getElementById("testBody").innerHTML=html;
-}
-async function saveFile(){
-  const d=await fetch("/api/file/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:curEdit,content:document.getElementById("ced").value})}).then(r=>r.json());
-  toast(d.ok?"✅ সেভ + MongoDB আপডেট":"❌ "+d.error,d.ok?"success":"error");
-}
-function dlF(p){window.open("/api/file/download?path="+encodeURIComponent(p));}
-async function delItem(p,name){
-  if(!confirm('"'+name+'" ডিলিট করবেন? MongoDB থেকেও মুছবে।'))return;
-  const d=await fetch("/api/file/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})}).then(r=>r.json());
-  toast(d.ok?"🗑 ডিলিট হয়েছে":"❌ "+d.error,d.ok?"success":"error");if(d.ok)loadFiles(curDir);
-}
-
-// MODALS
-document.querySelectorAll(".mbg").forEach(bg=>bg.addEventListener("click",e=>{if(e.target===bg)bg.classList.remove("open");}));
-function showM(id){document.getElementById("mod-"+id).classList.add("open");setTimeout(()=>{var _f=document.querySelector("#mod-"+id+" input");if(_f)_f.focus();},100);}
-function closeM(id){document.getElementById("mod-"+id).classList.remove("open");}
-
-async function doMkdir(){
-  const n=document.getElementById("mkN").value.trim();if(!n)return;
-  const fp=curDir?curDir+"/"+n:n;
-  const d=await fetch("/api/file/mkdir",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:fp})}).then(r=>r.json());
-  closeM("mkdir");toast(d.ok?"📁 তৈরি হয়েছে":"❌ "+d.error,d.ok?"success":"error");if(d.ok)loadFiles(curDir);
-}
-
-async function doNewFile(){
-  const n=document.getElementById("nfN").value.trim();if(!n)return;
-  const fp=curDir?curDir+"/"+n:n;
-  const d=await fetch("/api/file/newfile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:fp,content:""})}).then(r=>r.json());
-  closeM("newfile");if(d.ok){toast("📄 তৈরি + MongoDB সেভ","success");editF(fp);}else toast("❌ "+d.error,"error");
-}
-
-function showRename(p,name){renameFrom=p;document.getElementById("rnV").value=name;showM("rename");}
-async function doRename(){
-  const n=document.getElementById("rnV").value.trim();if(!n)return;
-  const dir=renameFrom.includes("/")?renameFrom.split("/").slice(0,-1).join("/"):"";
-  const to=dir?dir+"/"+n:n;
-  const d=await fetch("/api/file/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:renameFrom,to})}).then(r=>r.json());
-  closeM("rename");toast(d.ok?"✅ নাম পরিবর্তন":"❌ "+d.error,d.ok?"success":"error");if(d.ok)loadFiles(curDir);
-}
-
-function showCopy(p){copyFrom=p;document.getElementById("cpTo").value=p+"_copy";showM("copy");}
-async function doCopy(){
-  const to=document.getElementById("cpTo").value.trim();if(!to)return;
-  const d=await fetch("/api/file/copy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:copyFrom,to})}).then(r=>r.json());
-  closeM("copy");toast(d.ok?"📋 Copy হয়েছে":"❌ "+d.error,d.ok?"success":"error");if(d.ok)loadFiles(curDir);
-}
-
-// FILE SEARCH
-let fst;
-function doFS(){
-  const q=document.getElementById("fq").value.trim();
-  const res=document.getElementById("fsRes");
-  if(!q){res.style.display="none";return;}
-  clearTimeout(fst);fst=setTimeout(async()=>{
-    const d=await fetch("/api/file/search?q="+encodeURIComponent(q)).then(r=>r.json());
-    if(!(d.results && d.results.length)){res.style.display="block";res.innerHTML='<div style="font-size:12px;color:var(--mu);padding:10px;text-align:center">📭 পাওয়া যায়নি</div>';return;}
-    res.style.display="block";
-    res.innerHTML=d.results.map(r=>'<div class="srow" onclick="'+(r.isDir?"loadFiles('"+r.path+"')":"editF('"+r.path+"')")+'"><div class="srow-p">'+ficon(r.name,r.isDir)+" "+r.path+'</div><div class="srow-m">'+fsz(r.size)+'</div></div>').join("");
-  },300);
-}
-
-// UPLOAD — চাংক করে পাঠানো হয় (ধীর/অস্থির নেটওয়ার্কে নির্ভরযোগ্য), প্রতিটা চাংক fail করলে শুধু সেটাই রিট্রাই হয়
-async function uploadF(file){
-  if(!file)return;
-  const pw=document.getElementById("progWrap"),pb=document.getElementById("progBar"),pp=document.getElementById("upPct"),ps=document.getElementById("upSt"),fn=document.getElementById("upFN");
-  pw.style.display="block";fn.textContent=file.name;pb.style.width="0%";pp.textContent="0%";ps.textContent="চেক করা হচ্ছে (আগের অসম্পূর্ণ আপলোড আছে কিনা)...";
-  const CHUNK_SIZE=50*1024; // 50KB — ধীর নেটওয়ার্কের জন্য ছোট রাখা হয়েছে
-  const totalChunks=Math.max(1,Math.ceil(file.size/CHUNK_SIZE));
-  // ফাইলের নাম+সাইজ+lastModified থেকে স্থায়ী ID — একই ফাইল আবার সিলেক্ট করলে আগের progress থেকে resume হবে, শুরু থেকে না
-  const uploadId="f"+file.size+"_"+(file.lastModified||0)+"_"+file.name.replace(/[^a-zA-Z0-9]/g,"").slice(0,40);
-  const already=new Set();
-  try{
-    const st=await fetch("/api/file/upload-status?uploadId="+encodeURIComponent(uploadId)).then(r=>r.json());
-    (st.have||[]).forEach(i=>already.add(i));
-  }catch(e){}
-  if(already.size>0) ps.textContent="আগের আপলোড থেকে resume হচ্ছে ("+already.size+"/"+totalChunks+" আগে থেকেই আছে)...";
-
-  async function sendChunk(i){
-    const start=i*CHUNK_SIZE,end=Math.min(file.size,start+CHUNK_SIZE);
-    const blob=file.slice(start,end);
-    let attempt=0;
-    while(attempt<8){
-      try{
-        const fd=new FormData();
-        fd.append("chunk",blob,"chunk");
-        fd.append("uploadId",uploadId);
-        fd.append("chunkIndex",i);
-        fd.append("totalChunks",totalChunks);
-        fd.append("fileName",file.name);
-        fd.append("path",curDir||"");
-        const d=await fetch("/api/file/upload-chunk",{method:"POST",body:fd}).then(r=>r.json());
-        if(d && d.ok!==false)return d;
-        throw new Error(d.msg||"চাংক ব্যর্থ");
-      }catch(e){
-        attempt++;
-        ps.innerHTML='<span style="color:#f5a623">⚠️ চাংক '+(i+1)+'/'+totalChunks+' রিট্রাই ('+attempt+'/8)...</span>';
-        await new Promise(r=>setTimeout(r,Math.min(1000*attempt,8000)));
-      }
-    }
-    return null;
-  }
-
-  const toSend=[];
-  for(let i=0;i<totalChunks;i++) if(!already.has(i)) toSend.push(i);
-  let doneCount=already.size,lastResult=null,failed=false;
-  function upd(){const p=Math.round((doneCount/totalChunks)*100);pb.style.width=p+"%";pp.textContent=p+"%";}
-  upd();
-
-  for(const i of toSend){
-    const d=await sendChunk(i);
-    if(!d){
-      failed=true;
-      ps.innerHTML='<span style="color:var(--rd)">❌ চাংক '+(i+1)+' বারবার ব্যর্থ — নেটওয়ার্ক ঠিক হলে একই ফাইল আবার সিলেক্ট করলে যেখানে থেমেছিল সেখান থেকে চালিয়ে যাবে</span>';
-      toast("❌ আপলোড থেমে গেছে — নেটওয়ার্ক ঠিক হলে আবার চেষ্টা করো","error");
-      break;
-    }
-    lastResult=d;doneCount++;upd();
-    ps.textContent="চাংক "+doneCount+"/"+totalChunks+" পাঠানো হয়েছে...";
-  }
-  if(failed){document.getElementById("fInp").value="";return;}
-
-  // সব চাংক আগে থেকেই ছিল (নতুন কিছু পাঠানো লাগেনি) হলে ফাইনালাইজ করার জন্য শেষ চাংকটা আবার পাঠাও
-  if(!lastResult||!lastResult.done) lastResult=await sendChunk(totalChunks-1);
-
-  if(lastResult&&lastResult.done&&lastResult.processing){
-    // extract+সেভ ব্যাকগ্রাউন্ডে চলছে — শেষ না হওয়া পর্যন্ত পোল করো (রিকোয়েস্ট টাইমআউট এড়াতে)
-    ps.innerHTML='<span style="color:#f5a623">⏳ '+(lastResult.msg||"প্রসেস হচ্ছে...")+'</span>';
-    let final=null;
-    for(let tries=0;tries<150;tries++){ // সর্বোচ্চ ~৭.৫ মিনিট (150 x 3s)
-      await new Promise(r=>setTimeout(r,3000));
-      try{
-        const st=await fetch("/api/file/upload-result?uploadId="+encodeURIComponent(uploadId)).then(r=>r.json());
-        if(st.status==="done"){final=st;break;}
-      }catch(e){}
-    }
-    if(final){
-      if(final.ok){ps.innerHTML='<span style="color:var(--gr)">✅ '+(final.msg||"সম্পন্ন")+'</span>';toast("✅ "+(final.msg||"সম্পন্ন"),"success");}
-      else{ps.innerHTML='<span style="color:var(--rd)">❌ '+(final.msg||"ব্যর্থ")+'</span>';toast("❌ "+(final.msg||"ব্যর্থ"),"error");}
-    }else{
-      ps.innerHTML='<span style="color:var(--rd)">⚠️ অনেকক্ষণ হয়ে গেছে, ফলাফল জানা যায়নি — "লগ" বা "ফাইল" ট্যাবে গিয়ে সরাসরি চেক করো</span>';
-    }
-  } else if(lastResult&&lastResult.done){
-    if(lastResult.ok){ps.innerHTML='<span style="color:var(--gr)">✅ '+(lastResult.msg||"সম্পন্ন")+'</span>';toast("✅ "+(lastResult.msg||"সম্পন্ন"),"success");}
-    else{ps.innerHTML='<span style="color:var(--rd)">❌ '+(lastResult.msg||"ব্যর্থ")+'</span>';toast("❌ "+(lastResult.msg||"ব্যর্থ"),"error");}
-  }
-  document.getElementById("fInp").value="";
-}
-
-async function uploadSingle(file){
-  if(!file)return;
-  const st=document.getElementById("singleStatus");
-  st.textContent="⏳ আপলোড হচ্ছে...";
-  const fd=new FormData();fd.append("file",file);fd.append("path",curDir||"");
-  const d=await fetch("/api/file/upload",{method:"POST",body:fd}).then(r=>r.json());
-  st.innerHTML=d.ok?'<span style="color:var(--gr)">✅ '+d.msg+'</span>':'<span style="color:var(--rd)">❌ '+d.error+'</span>';
-  toast(d.ok?"✅ "+d.msg:"❌ "+d.error,d.ok?"success":"error");
-  document.getElementById("singleInp").value="";
-}
-
-async function uploadMulti(files){
-  if(!files||!files.length)return;
-  const st=document.getElementById("multiStatus");
-  st.textContent="⏳ "+files.length+"টা ফাইল আপলোড হচ্ছে...";
-  const fd=new FormData();
-  for(const f of files) fd.append("files",f);
-  fd.append("path",curDir||"");
-  const d=await fetch("/api/file/upload-multi",{method:"POST",body:fd}).then(r=>r.json());
-  st.innerHTML=d.ok?'<span style="color:var(--gr)">✅ '+d.msg+'</span>':'<span style="color:var(--rd)">❌ '+d.error+'</span>';
-  toast(d.ok?"✅ "+d.msg:"❌ "+d.error,d.ok?"success":"error");
-  document.getElementById("multiInp").value="";
-}
-
-// Drag & Drop on upload zone
-const uz=document.getElementById("upZone");
-uz.addEventListener("dragover",e=>{e.preventDefault();uz.classList.add("drag");});
-uz.addEventListener("dragleave",()=>uz.classList.remove("drag"));
-uz.addEventListener("drop",e=>{e.preventDefault();uz.classList.remove("drag");uploadF(e.dataTransfer.files[0]);});
-
-// ENV
-async function loadEnv(){const d=await fetch("/api/env").then(r=>r.json());document.getElementById("envEd").value=d.content||"";}
-async function saveEnv(){const d=await fetch("/api/env/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:document.getElementById("envEd").value})}).then(r=>r.json());toast(d.ok?"✅ .env সেভ + MongoDB":"❌ "+d.msg,d.ok?"success":"error");}
-
-// SETTINGS
-async function loadSettings(){
-  const d=await fetch("/api/settings").then(r=>r.json());
-  document.getElementById("sName").value=d.panelName||"";
-  document.getElementById("sSiteUrl").value=d.siteUrl||location.origin;
-  document.getElementById("sAR").checked=d.autoRestart||false;
-  document.getElementById("sSched").checked=d.scheduleRestart||false;
-  document.getElementById("sTime").value=d.scheduleTime||"03:00";
-  const mi=document.getElementById("mongoInfo");
-  if(mi) mi.textContent=d.mongoConnected?"MongoDB সংযুক্ত ✅":"MongoDB বিচ্ছিন্ন ❌";
-}
-async function saveSettings(){
-  const body={panelName:document.getElementById("sName").value,siteUrl:document.getElementById("sSiteUrl").value,autoRestart:document.getElementById("sAR").checked,scheduleRestart:document.getElementById("sSched").checked,scheduleTime:document.getElementById("sTime").value};
-  const d=await fetch("/api/settings/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
-  toast(d.ok?"✅ সেভ হয়েছে":"❌ ব্যর্থ",d.ok?"success":"error");
-}
-async function changePw(){
-  const d=await fetch("/api/settings/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({current:document.getElementById("sCur").value,newPass:document.getElementById("sNew").value})}).then(r=>r.json());
-  toast(d.ok?"✅ "+d.msg:"❌ "+d.msg,d.ok?"success":"error");
-  if(d.ok){document.getElementById("sCur").value="";document.getElementById("sNew").value="";}
-}
-// TOAST
-function toast(msg,type="success"){
-  const w=document.getElementById("tw"),el=document.createElement("div");
-  el.className="toast "+type;el.textContent=msg;w.appendChild(el);
-  setTimeout(()=>{el.style.opacity="0";el.style.transition=".3s";setTimeout(()=>el.remove(),300);},4000);
-}
-
-// KEYBOARD
-document.addEventListener("keydown",e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==="s"&&curEdit){e.preventDefault();saveFile();}
-  if(e.key==="Escape") document.querySelectorAll(".mbg.open").forEach(m=>m.classList.remove("open"));
-});
-
-// INIT — আগে WS connect করো; ws.onopen থেকেই refresh() call হবে
-// তাই এখানে আলাদা refresh() লাগবে না। fallback: ১৫s পরে একবার নিশ্চিত করা
-connectWS();
-setTimeout(()=>{ if(_refreshFails>0||!_wsConnected) refresh(); },15000);
-setInterval(refresh,15000); // ১০s → ১৫s, Render free-তে ঘন ঘন call করলে rate limit হতে পারে
-</script>
-</body></html>`;}
