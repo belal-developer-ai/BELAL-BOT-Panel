@@ -592,10 +592,16 @@ function countF(d){
   return _fileCountCache.value;
 }
 app.get("/api/stats",auth,(req,res)=>{
+  // botFiles: cached value সাথে সাথে return — disk scan background এ করা হবে, block করবে না
+  const cached = _fileCountCache.value;
+  if(Date.now()-_fileCountCache.at > 60000){
+    // background এ scan, এই request block করবে না
+    setImmediate(()=>countF(BDIR));
+  }
   res.json({...stats,running:!!botProc,ready:botReady,currentUptime:botStart?Math.floor((Date.now()-botStart)/1000):0,
     autoRestart,memMB:Math.round(process.memoryUsage().rss/1024/1024),
     serverUptime:Math.floor(process.uptime()),node:process.version,
-    botFiles:countF(BDIR),mongoConnected:db_connected});
+    botFiles:cached,mongoConnected:db_connected});
 });
 
 // ── লাইভ সিস্টেম মনিটর — RAM (panel+bot) + MongoDB storage + Render bandwidth (optional API key) ──
@@ -1903,12 +1909,12 @@ body.log-full .log-controls{position:fixed;bottom:0;left:0;right:0;z-index:301;b
 
   <!-- Bot Status -->
   <div class="bot-state stopped" id="botStateCard">
-    <div class="bot-state-icon" id="botStateIcon">🔴</div>
+    <div class="bot-state-icon" id="botStateIcon">⏳</div>
     <div class="bot-state-info">
-      <div class="bot-state-txt" id="sTxt">চেক করছে...</div>
+      <div class="bot-state-txt" id="sTxt">সংযোগ হচ্ছে...</div>
       <div class="bot-state-sub" id="sUp"></div>
     </div>
-    <div class="stat-dot" id="sDot"></div>
+    <div class="stat-dot starting" id="sDot"></div>
   </div>
 
   <!-- Cookie Box -->
@@ -2305,13 +2311,19 @@ function connectWS(){
   const proto=location.protocol==='https:'?'wss':'ws';
   const ts=document.getElementById('tStatus');if(ts&&!_wsConnected)ts.textContent='সংযোগ...';
   ws=new WebSocket(proto+'://'+location.host);
-  ws.onopen=()=>{_wsConnected=true;refresh();};
+  ws.onopen=()=>{
+    _wsConnected=true;
+    // WS connect হলেই status pill update করো — refresh() শেষ হওয়ার আগেই
+    const ts=document.getElementById('tStatus');
+    if(ts&&ts.textContent==='সংযোগ...')ts.textContent='সংযুক্ত';
+    refresh(); // background এ full data আনো
+  };
   ws.onmessage=e=>{
     try{
       const m=JSON.parse(e.data);
       if(m.type==='log')appendLog(m.data);
       if(m.type==='logs'){document.getElementById('lbox').innerHTML='';m.data.forEach(appendLog);}
-      if(m.type==='status')updateBotStatus(m.running,m.starting);
+      if(m.type==='status')updateBotStatus(m.ready||(m.running&&!m.starting),m.running&&!m.ready&&!m.starting);
       if(m.type==='clearLogs')document.getElementById('lbox').innerHTML='';
       if(m.type==='alert'){showAlertBanner(m.data);_alertsCache.unshift(m.data);_unreadAlerts++;updateBell();}
       if(m.type==='mongo')updateMongo(m.connected);
@@ -2834,8 +2846,11 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── INIT ──
+// প্রথমে /ping দিয়ে Render server wake করো (cold start এ 50s লাগে)
+// WS এবং refresh() আলাদাভাবে চলবে — একটা fail করলে অন্যটা কাজ করবে
+fetch('/ping').catch(()=>{}); // fire-and-forget pre-warm
 connectWS();
-setTimeout(()=>{if(_refreshFails>0||!_wsConnected)refresh();},12000);
+setTimeout(()=>{if(_refreshFails>0||!_wsConnected)refresh();},10000);
 setInterval(refresh,15000);
 </script>
 </body></html>`;
@@ -2843,9 +2858,12 @@ setInterval(refresh,15000);
 
 // ── WebSocket handler ──
 wss.on("connection",ws=>{
-  ws.send(JSON.stringify({type:"status",running:!!botProc}));
-  ws.send(JSON.stringify({type:"logs",data:botLogs}));
+  // connect হওয়ার সাথে সাথেই সব current state পাঠিয়ে দাও
+  // client কে refresh() এর জন্য অপেক্ষা করতে হবে না
+  ws.send(JSON.stringify({type:"status",running:!!botProc,starting:botProc&&!botReady,ready:botReady}));
+  ws.send(JSON.stringify({type:"logs",data:botLogs.slice(-200)})); // শেষ ২০০ লগ, সব না
   ws.send(JSON.stringify({type:"mongo",connected:db_connected}));
+  ws.on("error",()=>{}); // WS error চুপচাপ handle
 });
 
 // ── START ──
